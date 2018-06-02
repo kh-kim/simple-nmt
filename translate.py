@@ -17,6 +17,8 @@ def define_argparser():
 
     p.add_argument('-batch_size', type = int, default = 128)
     p.add_argument('-max_length', type = int, default = 255)
+    p.add_argument('-n_best', type = int, default = 1)
+    p.add_argument('-beam_size', type = int, default = 5)
     
     config = p.parse_args()
 
@@ -34,14 +36,13 @@ def read_text():
 def to_text(indice, vocab):
     lines = []
 
-    for i in range(indice.size(0)):
+    for i in range(len(indice)):
         line = []
-
-        for j in range(indice.size(1)):
+        for j in range(len(indice[i])):
             index = indice[i][j]
 
             if index == data_loader.EOS:
-                line += ['<EOS>']
+                #line += ['<EOS>']
                 break
             else:
                 line += [vocab.itos[index]]
@@ -75,6 +76,8 @@ if __name__ == '__main__':
     model.load_state_dict(saved_data['model'])
     model.eval()
 
+    torch.set_grad_enabled(False)
+
     if config.gpu_id >= 0:
         model.cuda(config.gpu_id)
 
@@ -93,10 +96,22 @@ if __name__ == '__main__':
 
         x = loader.src.numericalize(loader.src.pad(sorted_lines), device = 'cuda:%d' % config.gpu_id if config.gpu_id >= 0 else 'cpu')
 
-        y_hat, indice = model.greedy_search(x)
-        output = to_text(indice, loader.tgt.vocab)
+        if config.beam_size == 1:
+            y_hat, indice = model.greedy_search(x)
+            output = to_text(indice, loader.tgt.vocab)
 
-        sorted_tuples = sorted(zip(output, orders), key = itemgetter(1))
-        output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
+            sorted_tuples = sorted(zip(output, orders), key = itemgetter(1))
+            output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
 
-        sys.stdout.write('\n'.join(output) + '\n')
+            sys.stdout.write('\n'.join(output) + '\n')
+        else:
+            batch_indice, _ = model.batch_beam_search(x, beam_size = config.beam_size, max_length = config.max_length, n_best = config.n_best)
+
+            output = []
+            for i in range(len(batch_indice)):
+                output += [to_text(batch_indice[i], loader.tgt.vocab)]
+            sorted_tuples = sorted(zip(output, orders), key = itemgetter(1))
+            output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
+
+            for i in range(len(output)):
+                sys.stdout.write('\n'.join(output[i]) + '\n')

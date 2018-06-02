@@ -5,6 +5,7 @@ from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 
 import data_loader
+from simple_nmt.search import SingleBeamSearchSpace
 
 class Attention(nn.Module):
 
@@ -17,6 +18,7 @@ class Attention(nn.Module):
     def forward(self, h_src, h_t_tgt, mask = None):
         # |h_src| = (batch_size, length, hidden_size)
         # |h_t_tgt| = (batch_size, 1, hidden_size)
+        # |mask| = (batch_size, length)
 
         query = self.linear(h_t_tgt.squeeze(1)).unsqueeze(-1)
         # |query| = (batch_size, hidden_size, 1)
@@ -156,6 +158,7 @@ class Seq2Seq(nn.Module):
         if isinstance(src, tuple):
             x, x_length = src
             mask = self.generate_mask(x, x_length)
+            # |mask| = (batch_size, length)
         else:
             x = src
 
@@ -243,8 +246,121 @@ class Seq2Seq(nn.Module):
 
             y = torch.topk(y_hat, 1, dim = -1)[1].squeeze(-1)
             done = done * torch.ne(y, data_loader.EOS).float()
+            # |y| = (batch_size, 1)
+            # |done| = (batch_size, 1)
 
         y_hats = torch.cat(y_hats, dim = 1)
         indice = torch.topk(y_hats, 1, dim = -1)[1].squeeze(-1)
+        # |y_hat| = (batch_size, length, output_size)
+        # |indice| = (batch_size, length)
 
         return y_hats, indice
+
+    def batch_beam_search(self, src, beam_size = 5, max_length = 255, n_best = 1):
+        mask = None
+        x_length = None
+        if isinstance(src, tuple):
+            x, x_length = src
+            mask = self.generate_mask(x, x_length)
+            # |mask| = (batch_size, length)
+        else:
+            x = src
+        batch_size = x.size(0)
+
+        emb_src = self.emb_src(x)
+        h_src, h_0_tgt = self.encoder((emb_src, x_length))
+        # |h_src| = (batch_size, length, hidden_size)
+        h_0_tgt, c_0_tgt = h_0_tgt
+        h_0_tgt = h_0_tgt.transpose(0, 1).contiguous().view(batch_size, -1, self.hidden_size).transpose(0, 1).contiguous()
+        c_0_tgt = c_0_tgt.transpose(0, 1).contiguous().view(batch_size, -1, self.hidden_size).transpose(0, 1).contiguous()
+        # |h_0_tgt| = (n_layers, batch_size, hidden_size)
+        h_0_tgt = (h_0_tgt, c_0_tgt)
+
+        spaces = [SingleBeamSearchSpace((h_0_tgt[0][:, i, :].unsqueeze(1), h_0_tgt[1][:, i, :].unsqueeze(1)), None, beam_size, max_length = max_length) for i in range(batch_size)]
+        done_cnt = [space.is_done() for space in spaces]
+
+        while sum(done_cnt) < batch_size:
+            current_batch_size = sum(done_cnt) * beam_size
+
+            combined_input = []
+            combined_hidden = []
+            combined_cell = []
+            combined_h_t_tilde = []
+            combined_h_src = []
+            combined_mask = []
+
+            for i, space in enumerate(spaces):
+                if space.is_done() == 0:
+                    y_hat_, (hidden_, cell_), h_t_tilde_ = space.get_batch()
+
+                    combined_input += [y_hat_]
+                    combined_hidden += [hidden_]
+                    combined_cell += [cell_]
+                    if h_t_tilde_ is not None:
+                        combined_h_t_tilde += [h_t_tilde_]
+                    else:
+                        combined_h_t_tilde = None
+
+                    combined_h_src += [h_src[i, :, :]] * beam_size
+                    combined_mask += [mask[i, :]] * beam_size
+
+            combined_input = torch.cat(combined_input, dim = 0)
+            combined_hidden = torch.cat(combined_hidden, dim = 1)
+            combined_cell = torch.cat(combined_cell, dim = 1)
+            if combined_h_t_tilde is not None:
+                combined_h_t_tilde = torch.cat(combined_h_t_tilde, dim = 0)
+            combined_h_src = torch.stack(combined_h_src)
+            combined_mask = torch.stack(combined_mask)
+            # |combined_input| = (current_batch_size, 1)
+            # |combined_hidden| = (n_layers, current_batch_size, hidden_size)
+            # |combined_cell| = (n_layers, current_batch_size, hidden_size)
+            # |combined_h_t_tilde| = (current_batch_size, 1, hidden_size)
+            # |combined_h_src| = (current_batch_size, length, hidden_size)
+            # |combined_mask| = (current_batch_size, length)
+
+            '''
+            print(combined_input.size())
+            print(combined_hidden.size())
+            print(combined_cell.size())
+            print(combined_h_t_tilde.size() if combined_h_t_tilde is not None else None)
+            print(combined_h_src.size())
+            print(combined_mask.size())
+            '''
+
+            emb_t = self.emb_dec(combined_input)
+            # |emb_t| = (current_batch_size, 1, word_vec_dim)
+
+            combined_decoder_output, (combined_hidden, combined_cell) = self.decoder(emb_t, combined_h_t_tilde, (combined_hidden, combined_cell))
+            # |combined_decoder_output| = (current_batch_size, 1, hidden_size)
+            context_vector = self.attn(combined_h_src, combined_decoder_output, combined_mask)
+            # |context_vector| = (current_batch_size, 1, hidden_size)
+            combined_h_t_tilde = self.tanh(self.concat(torch.cat([combined_decoder_output, context_vector], dim = -1)))
+            # |combined_h_t_tilde| = (current_batch_size, 1, hidden_size)
+            y_hat = self.generator(combined_h_t_tilde)
+            # |y_hat| = (current_batch_size, 1, output_size)
+
+            cnt = 0
+            for space in spaces:
+                if space.is_done() == 0:
+                    from_index = cnt * beam_size
+                    to_index = (cnt + 1) * beam_size
+
+                    space.collect_result(y_hat[from_index:to_index],
+                                                (combined_hidden[:, from_index:to_index, :], 
+                                                    combined_cell[:, from_index:to_index, :]),
+                                                combined_h_t_tilde[from_index:to_index]
+                                                )
+                    cnt += 1
+
+            done_cnt = [space.is_done() for space in spaces]
+
+        batch_sentences = []
+        batch_probs = []
+
+        for i, space in enumerate(spaces):
+            sentences, probs = space.get_n_best(n_best)
+
+            batch_sentences += [sentences]
+            batch_probs += [probs]
+
+        return batch_sentences, batch_probs
