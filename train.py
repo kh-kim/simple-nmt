@@ -18,7 +18,7 @@ def define_argparser():
     p.add_argument('-lang', required = True)
     p.add_argument('-gpu_id', type = int, default = -1)
 
-    p.add_argument('-batch_size', type = int, default = 64)
+    p.add_argument('-batch_size', type = int, default = 32)
     p.add_argument('-n_epochs', type = int, default = 20)
     p.add_argument('-print_every', type = int, default = 50)
     p.add_argument('-early_stop', type = int, default = 3)
