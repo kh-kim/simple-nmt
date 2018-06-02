@@ -276,84 +276,82 @@ class Seq2Seq(nn.Module):
         # |h_0_tgt| = (n_layers, batch_size, hidden_size)
         h_0_tgt = (h_0_tgt, c_0_tgt)
 
-        spaces = [SingleBeamSearchSpace((h_0_tgt[0][:, i, :].unsqueeze(1), h_0_tgt[1][:, i, :].unsqueeze(1)), None, beam_size, max_length = max_length) for i in range(batch_size)]
+        # initialize beam-search.
+        spaces = [SingleBeamSearchSpace((h_0_tgt[0][:, i, :].unsqueeze(1), 
+                                            h_0_tgt[1][:, i, :].unsqueeze(1)), 
+                                            None, 
+                                            beam_size, 
+                                            max_length = max_length
+                                            ) for i in range(batch_size)]
         done_cnt = [space.is_done() for space in spaces]
 
         while sum(done_cnt) < batch_size:
-            current_batch_size = sum(done_cnt) * beam_size
+            # current_batch_size = sum(done_cnt) * beam_size
 
-            combined_input = []
-            combined_hidden = []
-            combined_cell = []
-            combined_h_t_tilde = []
-            combined_h_src = []
-            combined_mask = []
-
+            # initialize fabricated variables.
+            fab_input, fab_hidden, fab_cell, fab_h_t_tilde = [], [], [], []
+            fab_h_src, fab_mask = [], []
+            
+            # batchify.
             for i, space in enumerate(spaces):
                 if space.is_done() == 0:
                     y_hat_, (hidden_, cell_), h_t_tilde_ = space.get_batch()
 
-                    combined_input += [y_hat_]
-                    combined_hidden += [hidden_]
-                    combined_cell += [cell_]
+                    fab_input += [y_hat_]
+                    fab_hidden += [hidden_]
+                    fab_cell += [cell_]
                     if h_t_tilde_ is not None:
-                        combined_h_t_tilde += [h_t_tilde_]
+                        fab_h_t_tilde += [h_t_tilde_]
                     else:
-                        combined_h_t_tilde = None
+                        fab_h_t_tilde = None
 
-                    combined_h_src += [h_src[i, :, :]] * beam_size
-                    combined_mask += [mask[i, :]] * beam_size
+                    fab_h_src += [h_src[i, :, :]] * beam_size
+                    fab_mask += [mask[i, :]] * beam_size
 
-            combined_input = torch.cat(combined_input, dim = 0)
-            combined_hidden = torch.cat(combined_hidden, dim = 1)
-            combined_cell = torch.cat(combined_cell, dim = 1)
-            if combined_h_t_tilde is not None:
-                combined_h_t_tilde = torch.cat(combined_h_t_tilde, dim = 0)
-            combined_h_src = torch.stack(combined_h_src)
-            combined_mask = torch.stack(combined_mask)
-            # |combined_input| = (current_batch_size, 1)
-            # |combined_hidden| = (n_layers, current_batch_size, hidden_size)
-            # |combined_cell| = (n_layers, current_batch_size, hidden_size)
-            # |combined_h_t_tilde| = (current_batch_size, 1, hidden_size)
-            # |combined_h_src| = (current_batch_size, length, hidden_size)
-            # |combined_mask| = (current_batch_size, length)
+            fab_input = torch.cat(fab_input, dim = 0)
+            fab_hidden = torch.cat(fab_hidden, dim = 1)
+            fab_cell = torch.cat(fab_cell, dim = 1)
+            if fab_h_t_tilde is not None:
+                fab_h_t_tilde = torch.cat(fab_h_t_tilde, dim = 0)
+            fab_h_src = torch.stack(fab_h_src)
+            fab_mask = torch.stack(fab_mask)
+            # |fab_input| = (current_batch_size, 1)
+            # |fab_hidden| = (n_layers, current_batch_size, hidden_size)
+            # |fab_cell| = (n_layers, current_batch_size, hidden_size)
+            # |fab_h_t_tilde| = (current_batch_size, 1, hidden_size)
+            # |fab_h_src| = (current_batch_size, length, hidden_size)
+            # |fab_mask| = (current_batch_size, length)
 
-            '''
-            print(combined_input.size())
-            print(combined_hidden.size())
-            print(combined_cell.size())
-            print(combined_h_t_tilde.size() if combined_h_t_tilde is not None else None)
-            print(combined_h_src.size())
-            print(combined_mask.size())
-            '''
-
-            emb_t = self.emb_dec(combined_input)
+            emb_t = self.emb_dec(fab_input)
             # |emb_t| = (current_batch_size, 1, word_vec_dim)
 
-            combined_decoder_output, (combined_hidden, combined_cell) = self.decoder(emb_t, combined_h_t_tilde, (combined_hidden, combined_cell))
-            # |combined_decoder_output| = (current_batch_size, 1, hidden_size)
-            context_vector = self.attn(combined_h_src, combined_decoder_output, combined_mask)
+            fab_decoder_output, (fab_hidden, fab_cell) = self.decoder(emb_t, fab_h_t_tilde, (fab_hidden, fab_cell))
+            # |fab_decoder_output| = (current_batch_size, 1, hidden_size)
+            context_vector = self.attn(fab_h_src, fab_decoder_output, fab_mask)
             # |context_vector| = (current_batch_size, 1, hidden_size)
-            combined_h_t_tilde = self.tanh(self.concat(torch.cat([combined_decoder_output, context_vector], dim = -1)))
-            # |combined_h_t_tilde| = (current_batch_size, 1, hidden_size)
-            y_hat = self.generator(combined_h_t_tilde)
+            fab_h_t_tilde = self.tanh(self.concat(torch.cat([fab_decoder_output, context_vector], dim = -1)))
+            # |fab_h_t_tilde| = (current_batch_size, 1, hidden_size)
+            y_hat = self.generator(fab_h_t_tilde)
             # |y_hat| = (current_batch_size, 1, output_size)
 
+            # separate the result for each sample.
             cnt = 0
             for space in spaces:
                 if space.is_done() == 0:
                     from_index = cnt * beam_size
                     to_index = (cnt + 1) * beam_size
 
+                    # pick k-best results for each sample.
                     space.collect_result(y_hat[from_index:to_index],
-                                                (combined_hidden[:, from_index:to_index, :], 
-                                                    combined_cell[:, from_index:to_index, :]),
-                                                combined_h_t_tilde[from_index:to_index]
+                                                (fab_hidden[:, from_index:to_index, :], 
+                                                    fab_cell[:, from_index:to_index, :]),
+                                                fab_h_t_tilde[from_index:to_index]
                                                 )
                     cnt += 1
 
             done_cnt = [space.is_done() for space in spaces]
 
+        # pick n-best hypothesis.
         batch_sentences = []
         batch_probs = []
 

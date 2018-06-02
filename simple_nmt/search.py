@@ -63,7 +63,7 @@ class SingleBeamSearchSpace():
 
         self.current_time_step += 1
 
-        cumulative_prob = y_hat + self.cumulative_probs[-1].masked_fill_(self.masks[-1], -float('inf')).unsqueeze(-1).unsqueeze(-1).expand(self.beam_size, 1, output_size)
+        cumulative_prob = y_hat + self.cumulative_probs[-1].masked_fill_(self.masks[-1], -float('inf')).view(-1, 1, 1).expand(self.beam_size, 1, output_size)
         top_log_prob, top_indice = torch.topk(cumulative_prob.view(-1), self.beam_size, dim = -1)
         # |top_log_prob| = (beam_size)
         # |top_indice| = (beam_size)

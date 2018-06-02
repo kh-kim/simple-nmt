@@ -84,6 +84,9 @@ if __name__ == '__main__':
     lines = read_text()
     
     while len(lines) > 0:
+        # Since packed_sequence must be sorted by decreasing order of length,
+        # sorting by length in mini-batch should be restored by original order.
+        # Therefore, we need to memorize the original index of the sentence.
         sorted_lines = lines[:config.batch_size]
         lines = lines[config.batch_size:]
         lengths = [len(_) for _ in sorted_lines]        
@@ -105,7 +108,11 @@ if __name__ == '__main__':
 
             sys.stdout.write('\n'.join(output) + '\n')
         else:
-            batch_indice, _ = model.batch_beam_search(x, beam_size = config.beam_size, max_length = config.max_length, n_best = config.n_best)
+            batch_indice, _ = model.batch_beam_search(x, 
+                                                        beam_size = config.beam_size, 
+                                                        max_length = config.max_length, 
+                                                        n_best = config.n_best
+                                                        )
 
             output = []
             for i in range(len(batch_indice)):
