@@ -6,6 +6,12 @@ This repo contains a simple source code for advanced neural machine translation 
 1. LSTM sequence-to-seuqnce with attention
 2. Beam search with mini-batch in parallel
 
+## Pre-requisite
+
+- Python 3.6 or higher
+- PyTorch 0.4 or higher
+- TorchText 0.3 or higher
+
 ## Usage
 
 ### 1. Training
