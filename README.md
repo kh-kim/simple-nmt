@@ -1,4 +1,4 @@
-# Simple Neuarl Machine Translation Toolkit
+# Simple Neural Machine Translation Toolkit
 This repo contains a simple source code for advanced neural machine translation based on sequence-to-sequence. Most open sources are unnecessarily too complicated, so those have too many features more than people's expected. Therefore, I hope that this repo can be a good solution for people who doesn't want unnecessarily many features.
 
 ## Basic Features
