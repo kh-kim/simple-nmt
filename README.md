@@ -14,6 +14,28 @@ This repo contains a simple source code for advanced neural machine translation 
 
 ## Usage
 
+### 0. Build Corpus
+
+```
+$ python ./data/build_corpus.py -h
+usage: build_corpus.py [-h] -input INPUT -lang LANG -output OUTPUT
+                       [-valid_ratio VALID_RATIO] [-test_ratio TEST_RATIO]
+                       [-no_shuffle]
+```
+
+example usage:
+```
+$ ls ./data
+corpus.en  corpus.ko
+$ python ./data/build_corpus.py -input ./data/corpus -lang enko -output ./data/corpus
+total src lines: 384105
+total tgt lines: 384105
+write 7682 lines to ./data/corpus.valid.en
+write 7682 lines to ./data/corpus.valid.ko
+write 376423 lines to ./data/corpus.train.en
+write 376423 lines to ./data/corpus.train.ko
+```
+
 ### 1. Training
 
 ```
