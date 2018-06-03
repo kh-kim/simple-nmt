@@ -89,6 +89,12 @@ class SingleBeamSearchSpace():
                     probs += [self.cumulative_probs[t][b] / self.get_length_penalty(t)]
                     founds += [(t, b)]
 
+        for b in range(self.beam_size):
+            if self.cumulative_probs[-1][b] != -float('inf'):
+                if not (len(self.cumulative_probs) - 1, b) in founds:
+                    probs += [self.cumulative_probs[-1][b]]
+                    founds += [(t, b)]
+
         sorted_founds_with_probs = sorted(zip(founds, probs), 
                                             key = itemgetter(1), 
                                             reverse = True

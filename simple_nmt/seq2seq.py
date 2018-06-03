@@ -285,7 +285,8 @@ class Seq2Seq(nn.Module):
                                             ) for i in range(batch_size)]
         done_cnt = [space.is_done() for space in spaces]
 
-        while sum(done_cnt) < batch_size:
+        length = 0
+        while sum(done_cnt) < batch_size and length <= max_length:
             # current_batch_size = sum(done_cnt) * beam_size
 
             # initialize fabricated variables.
@@ -350,6 +351,7 @@ class Seq2Seq(nn.Module):
                     cnt += 1
 
             done_cnt = [space.is_done() for space in spaces]
+            length += 1
 
         # pick n-best hypothesis.
         batch_sentences = []
