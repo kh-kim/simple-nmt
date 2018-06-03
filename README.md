@@ -52,7 +52,7 @@ usage: train.py [-h] -model MODEL -train TRAIN -valid VALID -lang LANG
 
 example usage:
 ```
-$ python train.py -model ./model/enko.pth -train ./data/train -valid ./data/valid -lang enko -gpu_id 0 -batch_size 32 -n_epochs 13 -word_vec_dim 256 -hidden_size 768
+$ python train.py -model ./models/enko.small_corpus.pth -train ./data/corpus.train -valid ./data/corpus.valid -lang enko -gpu_id 0 -word_vec_dim 256 -hidden_size 512 -batch_size 32 -n_epochs 18
 ```
 
 You may need to change the argument parameters.
@@ -68,7 +68,7 @@ usage: translate.py [-h] -model MODEL [-gpu_id GPU_ID]
 
 example usage:
 ```
-$ python translate.py -model ./model/enko.12.1.18-3.24.1.37-3.92.pth -gpu_id 0 -batch_size 128 -beam_size 5
+$ python translate.py -model ./model/enko.small_corpus.12.1.18-3.24.1.37-3.92.pth -gpu_id 0 -batch_size 128 -beam_size 5
 ```
 
 You may also need to change the argument parameters.
