@@ -83,42 +83,43 @@ if __name__ == '__main__':
 
     lines = read_text()
     
-    while len(lines) > 0:
-        # Since packed_sequence must be sorted by decreasing order of length,
-        # sorting by length in mini-batch should be restored by original order.
-        # Therefore, we need to memorize the original index of the sentence.
-        sorted_lines = lines[:config.batch_size]
-        lines = lines[config.batch_size:]
-        lengths = [len(_) for _ in sorted_lines]        
-        orders = [i for i in range(len(sorted_lines))]
-        
-        sorted_tuples = sorted(zip(sorted_lines, lengths, orders), key = itemgetter(1), reverse = True)
-        sorted_lines = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
-        lengths = [sorted_tuples[i][1] for i in range(len(sorted_tuples))]
-        orders = [sorted_tuples[i][2] for i in range(len(sorted_tuples))]
+    with torch.no_grad():
+        while len(lines) > 0:
+            # Since packed_sequence must be sorted by decreasing order of length,
+            # sorting by length in mini-batch should be restored by original order.
+            # Therefore, we need to memorize the original index of the sentence.
+            sorted_lines = lines[:config.batch_size]
+            lines = lines[config.batch_size:]
+            lengths = [len(_) for _ in sorted_lines]        
+            orders = [i for i in range(len(sorted_lines))]
+            
+            sorted_tuples = sorted(zip(sorted_lines, lengths, orders), key = itemgetter(1), reverse = True)
+            sorted_lines = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
+            lengths = [sorted_tuples[i][1] for i in range(len(sorted_tuples))]
+            orders = [sorted_tuples[i][2] for i in range(len(sorted_tuples))]
 
-        x = loader.src.numericalize(loader.src.pad(sorted_lines), device = 'cuda:%d' % config.gpu_id if config.gpu_id >= 0 else 'cpu')
+            x = loader.src.numericalize(loader.src.pad(sorted_lines), device = 'cuda:%d' % config.gpu_id if config.gpu_id >= 0 else 'cpu')
 
-        if config.beam_size == 1:
-            y_hat, indice = model.greedy_search(x)
-            output = to_text(indice, loader.tgt.vocab)
+            if config.beam_size == 1:
+                y_hat, indice = model.search(x)
+                output = to_text(indice, loader.tgt.vocab)
 
-            sorted_tuples = sorted(zip(output, orders), key = itemgetter(1))
-            output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
+                sorted_tuples = sorted(zip(output, orders), key = itemgetter(1))
+                output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
 
-            sys.stdout.write('\n'.join(output) + '\n')
-        else:
-            batch_indice, _ = model.batch_beam_search(x, 
-                                                        beam_size = config.beam_size, 
-                                                        max_length = config.max_length, 
-                                                        n_best = config.n_best
-                                                        )
+                sys.stdout.write('\n'.join(output) + '\n')
+            else:
+                batch_indice, _ = model.batch_beam_search(x, 
+                                                            beam_size = config.beam_size, 
+                                                            max_length = config.max_length, 
+                                                            n_best = config.n_best
+                                                            )
 
-            output = []
-            for i in range(len(batch_indice)):
-                output += [to_text(batch_indice[i], loader.tgt.vocab)]
-            sorted_tuples = sorted(zip(output, orders), key = itemgetter(1))
-            output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
+                output = []
+                for i in range(len(batch_indice)):
+                    output += [to_text(batch_indice[i], loader.tgt.vocab)]
+                sorted_tuples = sorted(zip(output, orders), key = itemgetter(1))
+                output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
 
-            for i in range(len(output)):
-                sys.stdout.write('\n'.join(output[i]) + '\n')
+                for i in range(len(output)):
+                    sys.stdout.write('\n'.join(output[i]) + '\n')

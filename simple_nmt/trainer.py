@@ -19,13 +19,13 @@ def get_loss(y, y_hat, criterion, do_backward = True):
 
     return loss
 
-def train_epoch(model, criterion, train_iter, valid_iter, config, others_to_save = None):
+def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 1, others_to_save = None):
     current_lr = config.lr
 
     lowest_valid_loss = np.inf
     no_improve_cnt = 0
 
-    for epoch in range(1, config.n_epochs):
+    for epoch in range(start_epoch, config.n_epochs + 1):
         #optimizer = optim.Adam(model.parameters(), lr = current_lr)
         optimizer = optim.SGD(model.parameters(), lr = current_lr)
         print("current learning rate: %f" % current_lr)
@@ -95,44 +95,46 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, others_to_save
         sample_cnt = 0
         total_loss, total_word_count = 0, 0
 
-        model.eval()
-        for batch_index, batch in enumerate(valid_iter):
-            current_batch_word_cnt = torch.sum(batch.tgt[1])
-            x = batch.src
-            y = batch.tgt[0][:, 1:]
+        with torch.no_grad():
+            model.eval()
+            
+            for batch_index, batch in enumerate(valid_iter):
+                current_batch_word_cnt = torch.sum(batch.tgt[1])
+                x = batch.src
+                y = batch.tgt[0][:, 1:]
 
-            # |x| = (batch_size, length)
-            # |y| = (batch_size, length)
+                # |x| = (batch_size, length)
+                # |y| = (batch_size, length)
 
-            # feed-forward
-            y_hat = model(x, batch.tgt[0][:, :-1])
+                # feed-forward
+                y_hat = model(x, batch.tgt[0][:, :-1])
 
-            # |y_hat| = (batch_size, length, output_size)
+                # |y_hat| = (batch_size, length, output_size)
 
-            loss = get_loss(y, y_hat, criterion, do_backward = False)
+                loss = get_loss(y, y_hat, criterion, do_backward = False)
 
-            total_loss += float(loss)
-            total_word_count += int(current_batch_word_cnt)
+                total_loss += float(loss)
+                total_word_count += int(current_batch_word_cnt)
 
-            sample_cnt += batch.tgt[0].size(0)
-            if sample_cnt >= len(valid_iter.dataset.examples):
-                break
+                sample_cnt += batch.tgt[0].size(0)
+                if sample_cnt >= len(valid_iter.dataset.examples):
+                    break
 
-        avg_loss = total_loss / total_word_count
-        print("valid loss: %.4f\tPPL: %.2f" % (avg_loss, np.exp(avg_loss)))
+            avg_loss = total_loss / total_word_count
+            print("valid loss: %.4f\tPPL: %.2f" % (avg_loss, np.exp(avg_loss)))
 
-        if lowest_valid_loss > avg_loss:
-            lowest_valid_loss = avg_loss
-            no_improve_cnt = 0
+            if lowest_valid_loss > avg_loss:
+                lowest_valid_loss = avg_loss
+                no_improve_cnt = 0
 
-            if epoch >= config.lr_decay_start_at:
+                if epoch >= config.lr_decay_start_at:
+                    current_lr = max(config.min_lr, current_lr / 10.)
+            else:
+                # decrease learing rate if there is no improvement.
                 current_lr = max(config.min_lr, current_lr / 10.)
-        else:
-            # decrease learing rate if there is no improvement.
-            current_lr = max(config.min_lr, current_lr / 10.)
-            no_improve_cnt += 1
+                no_improve_cnt += 1
 
-        model.train()
+            model.train()
 
         model_fn = config.model.split(".")
         model_fn = model_fn[:-1] + ["%02d" % epoch, "%.2f-%.2f" % (train_loss, np.exp(train_loss)), "%.2f-%.2f" % (avg_loss, np.exp(avg_loss))] + [model_fn[-1]]

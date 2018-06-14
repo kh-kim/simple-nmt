@@ -211,7 +211,7 @@ class Seq2Seq(nn.Module):
 
         return y_hat
 
-    def greedy_search(self, src):
+    def search(self, src, is_greedy = True, max_length = 255):
         mask = None
         x_length = None
         if isinstance(src, tuple):
@@ -233,7 +233,8 @@ class Seq2Seq(nn.Module):
         h_t_tilde = None
         decoder_hidden = h_0_tgt
         y_hats = []
-        while done.sum() > 0:
+        indice = []
+        while done.sum() > 0 and len(indice) < max_length:
             emb_t = self.emb_dec(y)
             # |emb_t| = (batch_size, 1, word_vec_dim)
 
@@ -244,13 +245,17 @@ class Seq2Seq(nn.Module):
             # |y_hat| = (batch_size, 1, output_size)
             y_hats += [y_hat]
 
-            y = torch.topk(y_hat, 1, dim = -1)[1].squeeze(-1)
+            if is_greedy:
+                y = torch.topk(y_hat, 1, dim = -1)[1].squeeze(-1)
+            else:
+                y = torch.multinomial(y_hat.exp().view(batch_size, -1), 1)
+            indice += [y]
             done = done * torch.ne(y, data_loader.EOS).float()
             # |y| = (batch_size, 1)
             # |done| = (batch_size, 1)
 
         y_hats = torch.cat(y_hats, dim = 1)
-        indice = torch.topk(y_hats, 1, dim = -1)[1].squeeze(-1)
+        indice = torch.cat(indice, dim = -1)
         # |y_hat| = (batch_size, length, output_size)
         # |indice| = (batch_size, length)
 
