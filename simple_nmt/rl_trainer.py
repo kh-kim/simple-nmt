@@ -1,7 +1,8 @@
 import time
 import numpy as np
 #from nltk.translate.bleu_score import sentence_bleu as score_func
-from nltk.translate.gleu_score import sentence_gleu as score_func
+#from nltk.translate.gleu_score import sentence_gleu as score_func
+from utils import score_sentence as score_func
 
 import torch
 import torch.nn as nn
@@ -30,7 +31,8 @@ def get_reward(y, y_hat):
             if y_hat[b, t] == data_loader.EOS:
                 break
 
-        scores += [score_func([ref], hyp) * 100.]
+        #scores += [score_func([ref], hyp) * 100.]
+        scores += [score_func(ref, hyp, 4, smooth = 1)[-1] * 100.]
     scores = torch.FloatTensor(scores).to(y.device)
     # |scores| = (batch_size)
 
@@ -162,7 +164,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, others_to_save
             optimizer.step()
 
             sample_cnt += batch_size
-            if sample_cnt >= len(train_iter.dataset.examples) * .01:
+            if sample_cnt >= len(train_iter.dataset.examples) * config.rl_ratio_per_epoch:
                 break
 
         sample_cnt = 0

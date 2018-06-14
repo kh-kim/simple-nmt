@@ -26,8 +26,10 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
     no_improve_cnt = 0
 
     for epoch in range(start_epoch, config.n_epochs + 1):
-        #optimizer = optim.Adam(model.parameters(), lr = current_lr)
-        optimizer = optim.SGD(model.parameters(), lr = current_lr)
+        if config.adam:
+            optimizer = optim.Adam(model.parameters(), lr = current_lr)
+        else:
+            optimizer = optim.SGD(model.parameters(), lr = current_lr)
         print("current learning rate: %f" % current_lr)
         print(optimizer)
 
@@ -128,10 +130,10 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
                 no_improve_cnt = 0
 
                 if epoch >= config.lr_decay_start_at:
-                    current_lr = max(config.min_lr, current_lr / 10.)
+                    current_lr = max(config.min_lr, current_lr / config.lr_decay_rate)
             else:
                 # decrease learing rate if there is no improvement.
-                current_lr = max(config.min_lr, current_lr / 10.)
+                current_lr = max(config.min_lr, current_lr / config.lr_decay_rate)
                 no_improve_cnt += 1
 
             model.train()
