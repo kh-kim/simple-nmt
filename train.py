@@ -120,5 +120,6 @@ if __name__ == "__main__":
                             loader.train_iter,
                             loader.valid_iter,
                             config,
+                            start_epoch = (saved_data['epoch'] - config.n_epochs) if saved_data is not None else 1,
                             others_to_save = {'src_vocab': loader.src.vocab, 'tgt_vocab': loader.tgt.vocab}
                             )

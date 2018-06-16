@@ -1,8 +1,8 @@
 import time
 import numpy as np
-#from nltk.translate.bleu_score import sentence_bleu as score_func
+from nltk.translate.bleu_score import sentence_bleu as score_func
 #from nltk.translate.gleu_score import sentence_gleu as score_func
-from utils import score_sentence as score_func
+#from utils import score_sentence as score_func
 
 import torch
 import torch.nn as nn
@@ -31,8 +31,8 @@ def get_reward(y, y_hat):
             if y_hat[b, t] == data_loader.EOS:
                 break
 
-        #scores += [score_func([ref], hyp) * 100.]
-        scores += [score_func(ref, hyp, 4, smooth = 1)[-1] * 100.]
+        scores += [score_func([ref], hyp) * 100.]
+        #scores += [score_func(ref, hyp, 4, smooth = 1)[-1] * 100.]
     scores = torch.FloatTensor(scores).to(y.device)
     # |scores| = (batch_size)
 
@@ -47,12 +47,13 @@ def get_gradient(y, y_hat, criterion, reward = 1):
     # Before we get the gradient, multiply -reward for each sample and each time-step.
     y_hat = y_hat * -reward.view(-1, 1, 1).expand(*y_hat.size())
 
+    # Again, multiply -1 because criterion is NLLLoss.
     log_prob = -criterion(y_hat.contiguous().view(-1, y_hat.size(-1)), y.contiguous().view(-1))
     log_prob.div(batch_size).backward()
 
     return log_prob
 
-def train_epoch(model, criterion, train_iter, valid_iter, config, others_to_save = None):
+def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 1, others_to_save = None):
     current_lr = config.rl_lr
 
     highest_valid_bleu = -np.inf
@@ -85,7 +86,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, others_to_save
     model.train()
 
     # Start RL
-    for epoch in range(1, config.rl_n_epochs + 1):
+    for epoch in range(start_epoch, config.rl_n_epochs + 1):
         #optimizer = optim.Adam(model.parameters(), lr = current_lr)
         optimizer = optim.SGD(model.parameters(), lr = current_lr)
         print("current learning rate: %f" % current_lr)
@@ -152,7 +153,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, others_to_save
                                                                                                             elapsed_time
                                                                                                             ))
 
-                total_loss, total_word_count, total_parameter_norm, total_grad_norm = 0, 0, 0, 0
+                total_loss, total_bleu, total_sample_count, total_word_count, total_parameter_norm, total_grad_norm = 0, 0, 0, 0, 0, 0
                 start_time = time.time()
 
                 train_bleu = avg_bleu
@@ -210,7 +211,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, others_to_save
         # PyTorch provides efficient method for save and load model, which uses python pickle.
         to_save = {"model": model.state_dict(),
                     "config": config,
-                    "epoch": epoch + 1,
+                    "epoch": config.n_epochs + epoch + 1,
                     "current_lr": current_lr
                     }
         if others_to_save is not None:

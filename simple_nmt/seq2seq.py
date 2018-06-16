@@ -229,12 +229,12 @@ class Seq2Seq(nn.Module):
         h_0_tgt = (h_0_tgt, c_0_tgt)
 
         y = x.new(batch_size, 1).zero_() + data_loader.BOS
-        done = x.new_ones(batch_size, 1).float()
+        is_undone = x.new_ones(batch_size, 1).float()
         h_t_tilde = None
         decoder_hidden = h_0_tgt
         y_hats = []
         indice = []
-        while done.sum() > 0 and len(indice) < max_length:
+        while is_undone.sum() > 0 and len(indice) < max_length:
             emb_t = self.emb_dec(y)
             # |emb_t| = (batch_size, 1, word_vec_dim)
 
@@ -249,10 +249,11 @@ class Seq2Seq(nn.Module):
                 y = torch.topk(y_hat, 1, dim = -1)[1].squeeze(-1)
             else:
                 y = torch.multinomial(y_hat.exp().view(batch_size, -1), 1)
-            indice += [y]
-            done = done * torch.ne(y, data_loader.EOS).float()
+            y = y.masked_fill_((1. - is_undone).byte(), data_loader.PAD)
+            is_undone = is_undone * torch.ne(y, data_loader.EOS).float()            
             # |y| = (batch_size, 1)
-            # |done| = (batch_size, 1)
+            # |is_undone| = (batch_size, 1)
+            indice += [y]
 
         y_hats = torch.cat(y_hats, dim = 1)
         indice = torch.cat(indice, dim = -1)
