@@ -1,7 +1,7 @@
 import time
 import numpy as np
-from nltk.translate.bleu_score import sentence_bleu as score_func
-#from nltk.translate.gleu_score import sentence_gleu as score_func
+#from nltk.translate.bleu_score import sentence_bleu as score_func
+from nltk.translate.gleu_score import sentence_gleu as score_func
 #from utils import score_sentence as score_func
 
 import torch
@@ -31,7 +31,10 @@ def get_reward(y, y_hat):
             if y_hat[b, t] == data_loader.EOS:
                 break
 
+        # for nltk.bleu & nltk.gleu
         scores += [score_func([ref], hyp) * 100.]
+
+        # for utils.score_sentence
         #scores += [score_func(ref, hyp, 4, smooth = 1)[-1] * 100.]
     scores = torch.FloatTensor(scores).to(y.device)
     # |scores| = (batch_size)
@@ -86,7 +89,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
     model.train()
 
     # Start RL
-    for epoch in range(start_epoch, config.rl_n_epochs + 1):
+    for epoch in range(start_epoch - config.n_epochs, config.rl_n_epochs + 1):
         #optimizer = optim.Adam(model.parameters(), lr = current_lr)
         optimizer = optim.SGD(model.parameters(), lr = current_lr)
         print("current learning rate: %f" % current_lr)
