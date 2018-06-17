@@ -20,14 +20,14 @@ def define_argparser():
     p.add_argument('-gpu_id', type = int, default = -1)
 
     p.add_argument('-batch_size', type = int, default = 32)
-    p.add_argument('-n_epochs', type = int, default = 10)
+    p.add_argument('-n_epochs', type = int, default = 18)
     p.add_argument('-print_every', type = int, default = 50)
     p.add_argument('-early_stop', type = int, default = -1)
 
     p.add_argument('-max_length', type = int, default = 80)
     p.add_argument('-dropout', type = float, default = .2)
     p.add_argument('-word_vec_dim', type = int, default = 512)
-    p.add_argument('-hidden_size', type = int, default = 1024)
+    p.add_argument('-hidden_size', type = int, default = 768)
     p.add_argument('-n_layers', type = int, default = 4)   
     
     p.add_argument('-max_grad_norm', type = float, default = 5.)
