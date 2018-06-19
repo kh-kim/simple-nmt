@@ -89,7 +89,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
     model.train()
 
     # Start RL
-    for epoch in range(start_epoch - config.n_epochs, config.rl_n_epochs + 1):
+    for epoch in range(start_epoch, config.rl_n_epochs + 1):
         #optimizer = optim.Adam(model.parameters(), lr = current_lr)
         optimizer = optim.SGD(model.parameters(), lr = current_lr)
         print("current learning rate: %f" % current_lr)
