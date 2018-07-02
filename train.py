@@ -38,9 +38,9 @@ def define_argparser():
     p.add_argument('-lr_slow_decay', action = 'store_true', help = 'Decay learning rate only if there is no improvement on last epoch.')
     p.add_argument('-lr_decay_rate', type = float, default = .5)
 
-    p.add_argument('-rl_lr', type = float, default = .005)
+    p.add_argument('-rl_lr', type = float, default = .01)
     p.add_argument('-n_samples', type = int, default = 1)
-    p.add_argument('-rl_n_epochs', type = int, default = 10)
+    p.add_argument('-rl_n_epochs', type = int, default = 0)
     p.add_argument('-rl_ratio_per_epoch', type = float, default = 1.)
 
     config = p.parse_args()

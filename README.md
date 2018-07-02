@@ -3,8 +3,9 @@ This repo contains a simple source code for advanced neural machine translation 
 
 ## Basic Features
 
-1. LSTM sequence-to-seuqnce with attention
-2. Beam search with mini-batch in parallel
+1. [LSTM sequence-to-seuqnce with attention](http://aclweb.org/anthology/D15-1166)
+2. Reinforcement learning for fine-tuning like [Minimum Risk Training (MRT)](https://arxiv.org/abs/1512.02433)
+3. Beam search with mini-batch in parallel
 
 ## Pre-requisite
 
@@ -48,11 +49,14 @@ usage: train.py [-h] -model MODEL -train TRAIN -valid VALID -lang LANG
                 [-n_layers N_LAYERS] [-max_grad_norm MAX_GRAD_NORM] [-adam]
                 [-lr LR] [-min_lr MIN_LR]
                 [-lr_decay_start_at LR_DECAY_START_AT] [-lr_slow_decay]
+                [-lr_decay_rate LR_DECAY_RATE] [-rl_lr RL_LR]
+                [-n_samples N_SAMPLES] [-rl_n_epochs RL_N_EPOCHS]
+                [-rl_ratio_per_epoch RL_RATIO_PER_EPOCH]
 ```
 
 example usage:
 ```
-$ python train.py -model ./models/enko.small_corpus.pth -train ./data/corpus.train -valid ./data/corpus.valid -lang enko -gpu_id 0 -word_vec_dim 256 -hidden_size 512 -batch_size 32 -n_epochs 18
+$ python train.py -model ./models/enko.small_corpus.pth -train ./data/corpus.train -valid ./data/corpus.valid -lang enko -gpu_id 0 -word_vec_dim 256 -hidden_size 512 -batch_size 32 -n_epochs 15 -rl_n_epochs 10 -early_stop -1
 ```
 
 You may need to change the argument parameters.
