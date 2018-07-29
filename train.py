@@ -21,7 +21,7 @@ def define_argparser():
 
     p.add_argument('-batch_size', type = int, default = 32)
     p.add_argument('-n_epochs', type = int, default = 18)
-    p.add_argument('-print_every', type = int, default = 50)
+    p.add_argument('-print_every', type = int, default = 1000)
     p.add_argument('-early_stop', type = int, default = -1)
 
     p.add_argument('-max_length', type = int, default = 80)
@@ -41,7 +41,7 @@ def define_argparser():
     p.add_argument('-rl_lr', type = float, default = .005)
     p.add_argument('-n_samples', type = int, default = 1)
     p.add_argument('-rl_n_epochs', type = int, default = 10)
-    p.add_argument('-rl_ratio_per_epoch', type = float, default = 1.)
+    p.add_argument('-rl_n_gram', type = int, default = 4)
 
     config = p.parse_args()
 

@@ -12,7 +12,7 @@ import torch.nn.utils as torch_utils
 import utils
 import data_loader
 
-def get_reward(y, y_hat):
+def get_reward(y, y_hat, n_gram = 4):
     # |y| = (batch_size, length1)
     # |y_hat| = (batch_size, length2)
 
@@ -32,7 +32,7 @@ def get_reward(y, y_hat):
                 break
 
         # for nltk.bleu & nltk.gleu
-        scores += [score_func([ref], hyp) * 100.]
+        scores += [score_func([ref], hyp, max_len = n_gram) * 100.]
 
         # for utils.score_sentence
         #scores += [score_func(ref, hyp, 4, smooth = 1)[-1] * 100.]
@@ -78,7 +78,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
         # |y_hat| = (batch_size, length, output_size)
         # |indice| = (batch_size, length)
 
-        reward = get_reward(y, indice)
+        reward = get_reward(y, indice, n_gram = config.rl_n_gram)
 
         total_reward += float(reward.sum())
         sample_cnt += batch_size
@@ -112,7 +112,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
 
             # feed-forward
             y_hat, indice = model.search(x, is_greedy = False, max_length = config.max_length)
-            q_actor = get_reward(y, indice)
+            q_actor = get_reward(y, indice, n_gram = config.rl_n_gram)
             # |y_hat| = (batch_size, length, output_size)
             # |indice| = (batch_size, length)
             # |q_actor| = (batch_size)
@@ -121,7 +121,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
             with torch.no_grad():
                 for i in range(config.n_samples):
                     _, sampled_indice = model.search(x, is_greedy = False, max_length = config.max_length)
-                    baseline += [get_reward(y, sampled_indice)]
+                    baseline += [get_reward(y, sampled_indice, n_gram = config.rl_n_gram)]
                 baseline = torch.stack(baseline).sum(dim = 0).div(config.n_samples)
                 # |baseline| = (n_samples, batch_size) --> (batch_size)
 
@@ -168,7 +168,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
             optimizer.step()
 
             sample_cnt += batch_size
-            if sample_cnt >= len(train_iter.dataset.examples) * config.rl_ratio_per_epoch:
+            if sample_cnt >= len(train_iter.dataset.examples):
                 break
 
         sample_cnt = 0
@@ -190,7 +190,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
                 # |y_hat| = (batch_size, length, output_size)
                 # |indice| = (batch_size, length)
 
-                reward = get_reward(y, indice)
+                reward = get_reward(y, indice, n_gram = config.rl_n_gram)
 
                 total_reward += float(reward.sum())
                 sample_cnt += batch_size
