@@ -12,13 +12,13 @@ import simple_nmt.trainer as trainer
 def define_argparser():
     p = argparse.ArgumentParser()
 
-    p.add_argument('-model', required = True)
-    p.add_argument('-gpu_id', type = int, default = -1)
+    p.add_argument('-model', required = True, help = 'Model file name to use')
+    p.add_argument('-gpu_id', type = int, default = -1, help = 'GPU ID to use. -1 for CPU. Default = -1')
 
-    p.add_argument('-batch_size', type = int, default = 128)
-    p.add_argument('-max_length', type = int, default = 255)
-    p.add_argument('-n_best', type = int, default = 1)
-    p.add_argument('-beam_size', type = int, default = 5)
+    p.add_argument('-batch_size', type = int, default = 128, help = 'Mini batch size for parallel inference. Default = 128')
+    p.add_argument('-max_length', type = int, default = 255, help = 'Maximum sequence length for inference. Default = 255')
+    p.add_argument('-n_best', type = int, default = 1, help = 'Number of best inference result per sample. Default = 1')
+    p.add_argument('-beam_size', type = int, default = 5, help = 'Beam size for beam search. Default = 5')
     
     config = p.parse_args()
 
