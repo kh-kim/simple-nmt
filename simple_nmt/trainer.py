@@ -39,35 +39,42 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
         train_loss = np.inf
 
         for batch_index, batch in enumerate(train_iter):
+            # You have to reset the gradients of all model parameters before to take another step in gradient descent.
             optimizer.zero_grad()
 
             current_batch_word_cnt = torch.sum(batch.tgt[1])
             x = batch.src
-            y = batch.tgt[0][:, 1:]
-
+            # Raw target variable has both BOS and EOS token. 
+            # The output of sequence-to-sequence does not have BOS token. 
+            # Thus, remove BOS token for reference.
+            y = batch.tgt[0][:, 1:] 
             # |x| = (batch_size, length)
             # |y| = (batch_size, length)
 
-            # feed-forward
+            # Take feed-forward
+            # Similar as before, the input of decoder does not have EOS token.
+            # Thus, remove EOS token for decoder input.
             y_hat = model(x, batch.tgt[0][:, :-1])
-
             # |y_hat| = (batch_size, length, output_size)
 
-            # calcuate loss and gradients with back-propagation
+            # Calcuate loss and gradients with back-propagation.
             loss = get_loss(y, y_hat, criterion)
             
-            # simple math to show stats
+            # Simple math to show stats.
             total_loss += float(loss)
             total_word_count += int(current_batch_word_cnt)
             total_parameter_norm += float(utils.get_parameter_norm(model.parameters()))
             total_grad_norm += float(utils.get_grad_norm(model.parameters()))
 
+            # Print current training status in every this number of mini-batch is done.
             if (batch_index + 1) % config.print_every == 0:
                 avg_loss = total_loss / total_word_count
                 avg_parameter_norm = total_parameter_norm / config.print_every
                 avg_grad_norm = total_grad_norm / config.print_every
                 elapsed_time = time.time() - start_time
 
+                # You can check the current status using parameter norm and gradient norm.
+                # Also, you can check the speed of the training.
                 print("epoch: %d batch: %d/%d\t|param|: %.2f\t|g_param|: %.2f\tloss: %.4f\tPPL: %.2f\t%5d words/s %3d secs" % (epoch, 
                                                                                                             batch_index + 1, 
                                                                                                             int(len(train_iter.dataset.examples) // config.batch_size), 
@@ -84,7 +91,6 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
 
                 train_loss = avg_loss
 
-            # Another important line in this method.
             # In orther to avoid gradient exploding, we apply gradient clipping.
             torch_utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
             # Take a step of gradient descent.
@@ -97,20 +103,18 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
         sample_cnt = 0
         total_loss, total_word_count = 0, 0
 
-        with torch.no_grad():
-            model.eval()
+        with torch.no_grad(): # In validation, we don't need to get gradients.
+            model.eval() # Turn-on the evaluation mode.
             
             for batch_index, batch in enumerate(valid_iter):
                 current_batch_word_cnt = torch.sum(batch.tgt[1])
                 x = batch.src
                 y = batch.tgt[0][:, 1:]
-
                 # |x| = (batch_size, length)
                 # |y| = (batch_size, length)
 
-                # feed-forward
+                # Take feed-forward
                 y_hat = model(x, batch.tgt[0][:, :-1])
-
                 # |y_hat| = (batch_size, length, output_size)
 
                 loss = get_loss(y, y_hat, criterion, do_backward = False)
@@ -122,6 +126,7 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
                 if sample_cnt >= len(valid_iter.dataset.examples):
                     break
 
+            # Print result of validation.
             avg_loss = total_loss / total_word_count
             print("valid loss: %.4f\tPPL: %.2f" % (avg_loss, np.exp(avg_loss)))
 
@@ -129,15 +134,19 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
                 lowest_valid_loss = avg_loss
                 no_improve_cnt = 0
 
+                # Altough there is an improvement in last epoch, we need to decay the learning-rate if it meets the requirements.
                 if epoch >= config.lr_decay_start_at:
                     current_lr = max(config.min_lr, current_lr * config.lr_decay_rate)
             else:
-                # decrease learing rate if there is no improvement.
+                # Decrease learing rate if there is no improvement.
                 current_lr = max(config.min_lr, current_lr * config.lr_decay_rate)
                 no_improve_cnt += 1
 
+            # Again, turn-on the training mode.
             model.train()
 
+        # Set a filename for model of last epoch.
+        # We need to put every information to filename, as much as possible.
         model_fn = config.model.split(".")
         model_fn = model_fn[:-1] + ["%02d" % epoch, "%.2f-%.2f" % (train_loss, np.exp(train_loss)), "%.2f-%.2f" % (avg_loss, np.exp(avg_loss))] + [model_fn[-1]]
 
@@ -147,10 +156,11 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
                     "epoch": epoch + 1,
                     "current_lr": current_lr
                     }
-        if others_to_save is not None:
+        if others_to_save is not None: # Add others if it is necessary.
             for k, v in others_to_save.items():
                 to_save[k] = v
         torch.save(to_save, '.'.join(model_fn))
 
+        # Take early stopping if it meets the requirement.
         if config.early_stop > 0 and no_improve_cnt > config.early_stop:
             break

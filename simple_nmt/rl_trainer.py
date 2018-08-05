@@ -12,12 +12,21 @@ import torch.nn.utils as torch_utils
 import utils
 import data_loader
 
-def get_reward(y, y_hat, n_gram = 4):
+def get_reward(y, y_hat, n_gram = 6):
+    # This method gets the reward based on the sampling result and reference sentence.
+    # For now, we uses GLEU in NLTK, but you can used your own well-defined reward function.
+    # In addition, GLEU is variation of BLEU, and it is more fit to reinforcement learning.
+
+    # Since we don't calculate reward score exactly as same as multi-bleu.perl, 
+    # (especialy we do have different tokenization,) I recommend to set n_gram to 6.
+
     # |y| = (batch_size, length1)
     # |y_hat| = (batch_size, length2)
 
     scores = []
 
+    # Actually, below is really far from parallized operations.
+    # Thus, it may cause slow training.
     for b in range(y.size(0)):
         ref = []
         hyp = []
@@ -85,13 +94,13 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
         if sample_cnt >= len(valid_iter.dataset.examples):
             break
     avg_bleu = total_reward / sample_cnt
-    print("initial valid BLEU: %.4f" % avg_bleu)
-    model.train()
+    print("initial valid BLEU: %.4f" % avg_bleu) # You can figure-out improvement.
+    model.train() # Now, begin training.
 
     # Start RL
     for epoch in range(start_epoch, config.rl_n_epochs + 1):
         #optimizer = optim.Adam(model.parameters(), lr = current_lr)
-        optimizer = optim.SGD(model.parameters(), lr = current_lr)
+        optimizer = optim.SGD(model.parameters(), lr = current_lr) # Default hyper-parameter is set for SGD.
         print("current learning rate: %f" % current_lr)
         print(optimizer)
 
@@ -110,13 +119,16 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
             # |x| = (batch_size, length)
             # |y| = (batch_size, length)
 
-            # feed-forward
+            # Take sampling process because set False for is_greedy.
             y_hat, indice = model.search(x, is_greedy = False, max_length = config.max_length)
+            # Based on the result of sampling, get reward.
             q_actor = get_reward(y, indice, n_gram = config.rl_n_gram)
             # |y_hat| = (batch_size, length, output_size)
             # |indice| = (batch_size, length)
             # |q_actor| = (batch_size)
 
+            # Take samples as many as n_samples, and get average rewards for them.
+            # I figured out that n_samples = 1 would be enough.
             baseline = []
             with torch.no_grad():
                 for i in range(config.n_samples):
@@ -125,9 +137,11 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
                 baseline = torch.stack(baseline).sum(dim = 0).div(config.n_samples)
                 # |baseline| = (n_samples, batch_size) --> (batch_size)
 
-            # calcuate gradients with back-propagation
+            # Now, we have relatively expected cumulative reward.
+            # Which score can be drawn from q_actor subtracted by baseline.
             tmp_reward = q_actor - baseline
             # |tmp_reward| = (batch_size)
+            # calcuate gradients with back-propagation
             get_gradient(indice, y_hat, criterion, reward = tmp_reward)
 
             # simple math to show stats
@@ -161,7 +175,6 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
 
                 train_bleu = avg_bleu
 
-            # Another important line in this method.
             # In orther to avoid gradient exploding, we apply gradient clipping.
             torch_utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
             # Take a step of gradient descent.
@@ -174,8 +187,9 @@ def train_epoch(model, criterion, train_iter, valid_iter, config, start_epoch = 
         sample_cnt = 0
         total_reward = 0
 
+        # Start validation
         with torch.no_grad():
-            model.eval()
+            model.eval() # Turn-off drop-out
 
             for batch_index, batch in enumerate(valid_iter):
                 current_batch_word_cnt = torch.sum(batch.tgt[1])
