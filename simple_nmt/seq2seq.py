@@ -53,7 +53,7 @@ class Encoder(nn.Module):
             x, lengths = emb
             x = pack(x, lengths.tolist(), batch_first = True)
 
-            # Below is the effect of pack_padded_sequence.
+            # Below is how pack_padded_sequence works.
             # As you can see, PackedSequence object has information about mini-batch-wise information, not time-step-wise information.
             # 
             # a = [torch.tensor([1,2,3]), torch.tensor([3,4])]
