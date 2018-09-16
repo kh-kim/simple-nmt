@@ -91,7 +91,7 @@ class SingleBeamSearchSpace():
         # First, fill -inf value to last cumulative probability, if the beam is already finished.
         # Second, expand -inf filled cumulative probability to fit to 'y_hat'. (beam_size) --> (beam_size, 1, 1) --> (beam_size, 1, output_size)
         # Third, add expanded cumulative probability to 'y_hat'
-        cumulative_prob = y_hat + self.cumulative_probs[-1].masked_fill_(self.masks[-1], -float('inf')).view(-1, 1, 1).expand(self.beam_size, output_size)
+        cumulative_prob = y_hat + self.cumulative_probs[-1].masked_fill_(self.masks[-1], -float('inf')).view(-1, 1, 1).expand(self.beam_size, 1, output_size)
         # Now, we have new top log-probability and its index. We picked top index as many as 'beam_size'.
         # Be aware that we picked top-k from whole batch through 'view(-1)'.
         top_log_prob, top_indice = torch.topk(cumulative_prob.view(-1),
