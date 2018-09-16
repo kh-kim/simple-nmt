@@ -4,12 +4,12 @@ from random import shuffle
 def define_argparser():
     p = argparse.ArgumentParser()
 
-    p.add_argument('-input', required = True)
-    p.add_argument('-lang', required = True)
-    p.add_argument('-output', required = True)
-    p.add_argument('-valid_ratio', type = float, default = .02)
-    p.add_argument('-test_ratio', type = float, default = .0)
-    p.add_argument('-no_shuffle', action = 'store_true')
+    p.add_argument('--input', required=True)
+    p.add_argument('--lang', required=True)
+    p.add_argument('--output', required=True)
+    p.add_argument('--valid_ratio', type=float, default=.02)
+    p.add_argument('--test_ratio', type=float, default=.0)
+    p.add_argument('--no_shuffle', action='store_true')
 
     config = p.parse_args()
 
