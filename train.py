@@ -38,7 +38,7 @@ def define_argparser():
 
     p.add_argument('--batch_size',
                    type=int,
-                   default=32,
+                   default=64,
                    help='Mini batch size for gradient descent. Default=32'
                    )
     p.add_argument('--n_epochs',
@@ -69,12 +69,12 @@ def define_argparser():
                    )
     p.add_argument('--word_vec_dim',
                    type=int,
-                   default=512,
+                   default=256,
                    help='Word embedding vector dimension. Default=512'
                    )
     p.add_argument('--hidden_size',
                    type=int,
-                   default=768,
+                   default=512,
                    help='Hidden size of LSTM. Default=768'
                    )
     p.add_argument('--n_layers',
