@@ -147,10 +147,14 @@ You may also need to change the argument parameters.
 
 ## Evaluation
 
+To evaluate the implementation, I trained my own corpus from many website crawling.
+
 |Corpus|Lang1|Lang2|#Lines|Lang1 #Words|Lang2 #Words|
 |-|-|-|-|-|-|
 |Train-set|en|ko|2,814,676|40,643,480|49,735,827|
 |Valid-set|en|ko|9,885|142,822|175,569|
+
+Also, I tested Minimum Risk Training (MRT). After 18 epochs of training with Maximum Likelihood Estimation (MLE), I trained 10 more epochs with MRT. Below table shows that MRT has much better BLEU than MLE.
 
 |||koen|||enko||
 |-|-|-|-|-|-|-|
@@ -166,6 +170,8 @@ You may also need to change the argument parameters.
 |26|27.53|29.6685|24.64|26.37|28.171|29.45
 |27|27.78|29.618|24.65|26.63|28.241|28.87
 |28|27.73|29.7087|24.54|26.83|28.3358|29.11
+
+Below table shows that result from both MLE and MRT in Korean-English translation task.
 
 |INPUT|REF|MLE|MRT|
 |-|-|-|-|
@@ -186,18 +192,6 @@ You may also need to change the argument parameters.
 |젊은이들을 물리학에 대해 흥미를 붙일수 있게 할수 있는 가장 좋은 사람은 졸업생 물리학자이다.|The best possible person to excite young people about physics is a graduate physicist.|The best person to be able to make young people interested in physics is a self-thomac physicist.|The best person to make young people interested in physics is a graduate physicist.|
 |5월 20일, 인도는 팔로디 마을에서 충격적인 기온인 섭씨 51도를 달성하며, 가장 더운 날씨를 기록했습니다.|On May 20, India recorded its hottest day ever in the town of Phalodi with a staggering temperature of 51 degrees Celsius.|On May 20, India achieved its hottest temperatures, even 51 degrees Celsius, in the Palrody village, and recorded the hottest weather.|On May 20, India achieved 51 degrees Celsius, a devastating temperature in Paldydy town, and recorded the hottest weather.|
 |내말은, 가끔 바나는 그냥 바나나야.|I mean, sometimes a banana is just a banana.|I mean, sometimes a banana is just a banana.|I mean, sometimes a banana is just a banana.|
-
-|REF|MLE|MRT|
-|-|-|-|
-|사탄. 톰 레일리 : 가사 전부를 듣기는 좀 어렵네요, 그래서 저는-- (웃음) 그래서 저는 여러분을 조금이라도 도우려 합니다.|톰: 이제 메세지를 듣기가 조금 어렵습니다. (웃음) 그래서 저는 당신을 조금 돕고 싶었습니다.|톰: 이제 메세지를 듣기가 조금 어렵습니다. (웃음) 그래서 저는 여러분을 조금 돕고 싶었습니다. 그래서 저는 여러분을 조금 돕고 싶었습니다.|
-|몇 가지 다른 종류의 살모넬라 박테리아가 있고 그것들은 모두 여러분을 아프게 할 수 있습니다.|다양한 종류의 살모넬라 박테리아가 있고, 그들은 여러분을 아프게 할 수 있습니다.|몇 가지 다른 종류의 살모넬라 박테리아가 있고, 모두 여러분을 아프게 할 수 있습니다.|
-그녀는 몸을 과학에 주고 떠났다.|그녀는 과학에 몸을 맡기고 있다.|그녀는 과학에 몸을 맡기고 떠난다.|
-|마마는 1999년에 한국에서 시작되었습니다.|그 안전국은 1999년에 한국에서 시작했다.|MAMA는 1999년에 한국에서 시작되었다.|
-|그들에게는 평범하게 사는 것이 어려울 수 있습니다.|평범한 삶을 살 수 있는 것은 그들에게 힘들 수 있다|평범한 삶을 사는 것은 그들에게는 어려울 수 있다.|
-|그의 팔에 입은 총상을 붕대로 감다.|팔에 총상을 입은 상처를 입다.|팔에 총알을 붕대를 바르다.|
-|요가는 여러분이 심호흡을 하도록 돕고, 여러분이 폐를 더욱 기능적으로 사용하면 그것은 천식으로부터 여러분을 보호해 줍니다.|요가는 여러분이 깊게 호흡하는데 도움을 주고 폐의 기능적인 사용을 더 많이 할 때 천식을 예방하는데 도움을 줍니다.|요가는 여러분이 깊게 숨쉬는 데 도움이 되고 폐를 더 기능적이게 할 때 천식에 대항하는 것을 돕습니다.|
-|미국 유명 연예인 패리스 힐튼의 여동생은 패션 디자이너로서의 직업에 초점을 둘 것이라고 발표했습니다.|미국 연예인 패리스 힐튼의 여동생은 그녀가 패션 디자이너로서의 경력에 집중할 것이라고 발표했다.|미국 유명 연예인 패리스 힐튼 힐튼은 그녀가 패션 디자이너로 그녀의 경력에 집중할 것이라고 발표했다.|
-|나는 우리가 가능성이 없다는 것이 두려워.|나는 우리가 가망이 없는 것 같다.|유감스럽게도 우리가 가망이 없는 것 같다.|
 
 ## Author
 
