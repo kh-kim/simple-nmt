@@ -8,7 +8,7 @@ from data_loader import DataLoader
 import data_loader
 from simple_nmt.seq2seq import Seq2Seq
 from simple_nmt.trainer import Trainer
-import simple_nmt.rl_trainer as rl_trainer
+from simple_nmt.rl_trainer import MinimumRiskTrainer
 
 
 def define_argparser():
@@ -210,23 +210,30 @@ if __name__ == "__main__":
         model.cuda(config.gpu_id)
         criterion.cuda(config.gpu_id)
 
+    # Start training. This function maybe equivalant to 'fit' function in Keras.
+    trainer = Trainer(model, criterion, config=config,
+                                        src_vocab=loader.src.vocab,
+                                        tgt_vocab=loader.tgt.vocab,
+                                        )
     # If we have loaded model weight parameters, use that weights for declared model.
     if saved_data is not None:
-        model.load_state_dict(saved_data['model'])
-
-    # Start training. This function maybe equivalant to 'fit' function in Keras.
-    trainer = Trainer(model, criterion, config.lr)
-    trainer.train(loader.train_iter, loader.valid_iter, config)
+        trainer.best = saved_data
+        trainer.get_best_model()
+    
+    trainer.train(loader.train_iter, loader.valid_iter, verbose=config.verbose)
 
     # Start reinforcement learning.
     if config.rl_n_epochs > 0:
-        rl_trainer.train_epoch(model,
-                               criterion,  # Although it does not use cross-entropy loss, but its equation equals to use entropy.
-                               loader.train_iter,
+        rl_trainer = MinimumRiskTrainer(model, criterion, config=config,
+                                        src_vocab=loader.src.vocab,
+                                        tgt_vocab=loader.tgt.vocab,
+                                        )
+        
+        if saved_data is not None:
+            rl_trainer.best = saved_data
+            rl_trainer.get_best_model()
+
+        rl_trainer.train(loader.train_iter,
                                loader.valid_iter,
-                               config,
-                               start_epoch=(saved_data['epoch'] - config.n_epochs) if saved_data is not None else 1,
-                               others_to_save={'src_vocab': loader.src.vocab,
-                                               'tgt_vocab': loader.tgt.vocab
-                                               }
+                               verbose=config.verbose
                                )

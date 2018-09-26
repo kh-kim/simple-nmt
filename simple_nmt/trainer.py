@@ -14,14 +14,19 @@ VERBOSE_BATCH_WISE = 2
 
 class Trainer():
 
-    def __init__(self, model, crit, init_lr=1.):
+    def __init__(self, model, crit, config, **kwargs):
         self.model = model
         self.crit = crit
-
+        self.config = config
+        
         super().__init__()
 
+        self.n_epochs = config.n_epochs
+        self.lower_is_better = True
         self.best = {'epoch': 0,
-                     'lr': init_lr
+                     'current_lr': config.lr,
+                     'config': config,
+                     **kwargs
                      }
 
     def get_best_model(self):
@@ -29,7 +34,10 @@ class Trainer():
 
         return self.model
 
-    def get_loss(self, y_hat, y, crit=None):
+    def save_training(self, fn):
+        torch.save(self.best, fn)
+
+    def _get_loss(self, y_hat, y, crit=None):
         # |y_hat| = (batch_size, length, output_size)
         # |y| = (batch_size, length)
         crit = self.crit if crit is None else crit
@@ -41,8 +49,7 @@ class Trainer():
                     train,
                     optimizer,
                     batch_size=32,
-                    max_grad_norm=5,
-                    verbose=VERBOSE_SILENT
+                    verbose=VERBOSE_BATCH_WISE
                     ):
         '''
         Train an epoch with given train iterator and optimizer.
@@ -74,8 +81,8 @@ class Trainer():
             # |y_hat| = (batch_size, length, output_size)
 
             # Calcuate loss and gradients with back-propagation.
-            loss = self.get_loss(y_hat, y)
-            loss.backward()
+            loss = self._get_loss(y_hat, y)
+            loss.div(y.size(0)).backward()
             
             # Simple math to show stats.
             total_loss += loss
@@ -96,7 +103,7 @@ class Trainer():
 
             # In orther to avoid gradient exploding, we apply gradient clipping.
             torch_utils.clip_grad_norm_(self.model.parameters(),
-                                        max_grad_norm
+                                        self.config.max_grad_norm
                                         )
             # Take a step of gradient descent.
             optimizer.step()
@@ -110,76 +117,84 @@ class Trainer():
 
         return avg_loss, avg_param_norm, avg_grad_norm
 
-    def train(self, train, valid, config):
+    def train(self, train, valid, verbose=VERBOSE_EPOCH_WISE):
         '''
         Train with given train and valid iterator until n_epochs.
         If early_stop is set,
         early stopping will be executed if the requirement is satisfied.
         '''
-        current_lr = self.best['lr']
-        lowest_loss = float('Inf')
+        current_lr = self.best['current_lr']
+        best_loss = float('Inf') * (1 if self.lower_is_better else -1)
         lowest_after = 0
 
-        progress_bar = tqdm(range(self.best['epoch'], config.n_epochs),
+        progress_bar = tqdm(range(self.best['epoch'], self.n_epochs),
                             desc='Training: ',
                             unit='epoch'
-                            ) if config.verbose is VERBOSE_EPOCH_WISE else range(self.best['epoch'],
-                                                                                 config.n_epochs
+                            ) if verbose is VERBOSE_EPOCH_WISE else range(self.best['epoch'],
+                                                                                 self.n_epochs
                                                                                  )
 
         for idx in progress_bar:  # Iterate from 1 to n_epochs
-            if config.adam:
+            if self.config.adam:
                 optimizer = optim.Adam(self.model.parameters(), lr=current_lr)
             else:
                 optimizer = optim.SGD(self.model.parameters(), lr=current_lr)
 
-            if config.verbose > VERBOSE_EPOCH_WISE:
+            if verbose > VERBOSE_EPOCH_WISE:
                 print('epoch: %d/%d\tmin_valid_loss=%.4e' % (idx + 1,
                                                              len(progress_bar),
-                                                             lowest_loss
+                                                             best_loss
                                                              ))
             avg_train_loss, avg_param_norm, avg_grad_norm = self.train_epoch(train,
                                                                              optimizer,
-                                                                             batch_size=config.batch_size,
-                                                                             verbose=config.verbose
+                                                                             batch_size=self.config.batch_size,
+                                                                             verbose=verbose
                                                                              )
             avg_valid_loss = self.validate(valid,
-                                           verbose=config.verbose
+                                           verbose=verbose
                                            )
 
             # Print train status with different verbosity.
-            if config.verbose is VERBOSE_EPOCH_WISE:
+            if verbose is VERBOSE_EPOCH_WISE:
                 progress_bar.set_postfix_str('|param|=%.2f |g_param|=%.2f train_loss=%.4e valid_loss=%.4e min_valid_loss=%.4e' % (float(avg_param_norm),
                                                                                                                                   float(avg_grad_norm),
                                                                                                                                   float(avg_train_loss),
                                                                                                                                   float(avg_valid_loss),
-                                                                                                                                  float(lowest_loss)
+                                                                                                                                  float(best_loss)
                                                                                                                                   ))
 
-            if avg_valid_loss < lowest_loss:
+            if (self.lower_is_better and avg_valid_loss < best_loss) or \
+               (not self.lower_is_better and avg_valid_loss > best_loss):
                 # Update if there is an improvement.
-                lowest_loss = avg_valid_loss
+                best_loss = avg_valid_loss
                 lowest_after = 0
 
-                self.best = {'model': self.model.state_dict(),
-                             'optim': optimizer,
-                             'epoch': idx,
-                             'lowest_loss': lowest_loss,
-                             'lr': current_lr
-                             }
+                self.best['model'] = self.model.state_dict()
+                self.best['optim'] = optimizer
+                self.best['epoch'] = idx + 1
+                self.best['current_lr'] = current_lr
+
+                # Set a filename for model of last epoch.
+                # We need to put every information to filename, as much as possible.
+                model_fn = self.config.model.split('.')
+                model_fn = model_fn[:-1] + ['%02d' % (idx + 1),
+                                            '%.2f-%.2f' % (avg_train_loss, avg_train_loss.exp()),
+                                            '%.2f-%.2f' % (avg_valid_loss, avg_valid_loss.exp())
+                                            ] + [model_fn[-1]]
+                self.save_training('.'.join(model_fn))
             else:
                 lowest_after += 1
 
-                if lowest_after >= config.early_stop and config.early_stop > 0:
+                if lowest_after >= self.config.early_stop and self.config.early_stop > 0:
                     break
-        if config.verbose is VERBOSE_EPOCH_WISE:
+        if verbose is VERBOSE_EPOCH_WISE:
             progress_bar.close()
 
     def validate(self,
                  valid,
                  crit=None,
                  batch_size=256,
-                 verbose=VERBOSE_SILENT
+                 verbose=VERBOSE_BATCH_WISE
                  ):
         '''
         Validate a model with given valid iterator.
@@ -203,9 +218,9 @@ class Trainer():
                 y_hat = self.model(x, mini_batch.tgt[0][:, :-1])
                 # |y_hat| = (batch_size, n_classes)
                 
-                loss = self.get_loss(y_hat, y, crit)
+                loss = self._get_loss(y_hat, y, crit)
 
-                total_loss += float(loss)
+                total_loss += loss
                 total_word_count += int(mini_batch.tgt[1].sum())
                 avg_loss = total_loss / total_word_count
 
