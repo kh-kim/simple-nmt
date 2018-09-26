@@ -87,6 +87,7 @@ class Trainer():
             loss.div(y.size(0)).backward()
 
             # Simple math to show stats.
+            # Don't forget to detach final variables.
             total_loss += loss.detach()
             total_word_count += int(mini_batch.tgt[1].detach().sum())
             total_param_norm += utils.get_parameter_norm(self.model.parameters()).detach()

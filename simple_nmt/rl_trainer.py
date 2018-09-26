@@ -159,11 +159,11 @@ class MinimumRiskTrainer(Trainer):
             self._get_gradient(y_hat, indice, reward=final_reward)
             
             # Simple math to show stats.
-            total_reward += final_reward.sum()
-            total_actor_reward += actor_reward.sum()
+            total_reward += final_reward.sum().detach()
+            total_actor_reward += actor_reward.sum().detach()
             sample_cnt += actor_reward.size(0)
-            total_param_norm += utils.get_parameter_norm(self.model.parameters())
-            total_grad_norm += utils.get_grad_norm(self.model.parameters())
+            total_param_norm += utils.get_parameter_norm(self.model.parameters()).detach()
+            total_grad_norm += utils.get_grad_norm(self.model.parameters()).detach()
 
             avg_reward = total_reward / sample_cnt
             avg_actor_reward = total_actor_reward / sample_cnt
@@ -229,7 +229,7 @@ class MinimumRiskTrainer(Trainer):
                                           n_gram=self.config.rl_n_gram
                                           )
 
-                total_reward += reward.sum()
+                total_reward += reward.sum().detach()
                 sample_cnt += mini_batch.tgt[0].size(0)
                 
                 avg_reward = total_reward / sample_cnt
