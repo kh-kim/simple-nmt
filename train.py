@@ -49,7 +49,7 @@ def define_argparser():
     p.add_argument('--verbose',
                    type=int,
                    default=2,
-                   help='VERBOSE_SILENT = 0 VERBOSE_EPOCH_WISE = 1 VERBOSE_BATCH_WISE = 2'
+                   help='VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2'
                    )
     p.add_argument('--early_stop',
                    type=int,
@@ -211,29 +211,33 @@ if __name__ == "__main__":
         criterion.cuda(config.gpu_id)
 
     # Start training. This function maybe equivalant to 'fit' function in Keras.
-    trainer = Trainer(model, criterion, config=config,
-                                        src_vocab=loader.src.vocab,
-                                        tgt_vocab=loader.tgt.vocab,
-                                        )
+    trainer = Trainer(model,
+                      criterion,
+                      config=config,
+                      src_vocab=loader.src.vocab,
+                      tgt_vocab=loader.tgt.vocab,
+                      )
     # If we have loaded model weight parameters, use that weights for declared model.
     if saved_data is not None:
         trainer.best = saved_data
         trainer.get_best_model()
-    
+
     trainer.train(loader.train_iter, loader.valid_iter, verbose=config.verbose)
 
     # Start reinforcement learning.
     if config.rl_n_epochs > 0:
-        rl_trainer = MinimumRiskTrainer(model, criterion, config=config,
+        rl_trainer = MinimumRiskTrainer(model,
+                                        criterion,
+                                        config=config,
                                         src_vocab=loader.src.vocab,
                                         tgt_vocab=loader.tgt.vocab,
                                         )
-        
+
         if saved_data is not None:
             rl_trainer.best = saved_data
             rl_trainer.get_best_model()
 
         rl_trainer.train(loader.train_iter,
-                               loader.valid_iter,
-                               verbose=config.verbose
-                               )
+                         loader.valid_iter,
+                         verbose=config.verbose
+                         )

@@ -1,12 +1,9 @@
-import numpy as np
 from tqdm import tqdm
 # from nltk.translate.bleu_score import sentence_bleu as score_func
 from nltk.translate.gleu_score import sentence_gleu as score_func
 # from utils import score_sentence as score_func
 
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import torch.nn.utils as torch_utils
 
 import utils
@@ -74,7 +71,6 @@ class MinimumRiskTrainer(Trainer):
 
         return scores
 
-
     def _get_gradient(self, y_hat, y, crit=None, reward=1):
         # |y| = (batch_size, length)
         # |y_hat| = (batch_size, length, output_size)
@@ -86,8 +82,8 @@ class MinimumRiskTrainer(Trainer):
 
         # Again, multiply -1 because criterion is NLLLoss.
         log_prob = -crit(y_hat.contiguous().view(-1, y_hat.size(-1)),
-                              y.contiguous().view(-1)
-                              )
+                         y.contiguous().view(-1)
+                         )
         log_prob.div(y.size(0)).backward()
 
         return log_prob
@@ -102,8 +98,10 @@ class MinimumRiskTrainer(Trainer):
         '''
         Train an epoch with given train iterator and optimizer.
         '''
-        total_reward, total_actor_reward, total_param_norm, total_grad_norm = 0, 0, 0, 0
-        avg_reward, avg_actor_reward, avg_param_norm, avg_grad_norm = 0, 0, 0, 0
+        total_reward, total_actor_reward = 0, 0
+        total_param_norm, total_grad_norm = 0, 0
+        avg_reward, avg_actor_reward = 0, 0
+        avg_param_norm, avg_grad_norm = 0, 0
         sample_cnt = 0
 
         progress_bar = tqdm(train,
@@ -123,15 +121,15 @@ class MinimumRiskTrainer(Trainer):
             optimizer.zero_grad()
 
             # Take sampling process because set False for is_greedy.
-            y_hat, indice = self.model.search(x, 
+            y_hat, indice = self.model.search(x,
                                               is_greedy=False,
                                               max_length=self.config.max_length
                                               )
             # Based on the result of sampling, get reward.
             actor_reward = self._get_reward(indice,
-                                       y,
-                                       n_gram=self.config.rl_n_gram
-                                       )
+                                            y,
+                                            n_gram=self.config.rl_n_gram
+                                            )
             # |y_hat| = (batch_size, length, output_size)
             # |indice| = (batch_size, length)
             # |actor_reward| = (batch_size)
@@ -142,9 +140,9 @@ class MinimumRiskTrainer(Trainer):
             with torch.no_grad():
                 for i in range(self.config.n_samples):
                     _, sampled_indice = self.model.search(x,
-                                                     is_greedy=False,
-                                                     max_length=self.config.max_length
-                                                     )
+                                                          is_greedy=False,
+                                                          max_length=self.config.max_length
+                                                          )
                     baseline += [self._get_reward(sampled_indice,
                                                   y,
                                                   n_gram=self.config.rl_n_gram
@@ -174,10 +172,10 @@ class MinimumRiskTrainer(Trainer):
 
             if verbose is VERBOSE_BATCH_WISE:
                 progress_bar.set_postfix_str('|param|=%.2f |g_param|=%.2f rwd=%.4e BLEU=%.4f' % (avg_param_norm,
-                                                                                                  avg_grad_norm,
-                                                                                                  avg_reward,
-                                                                                                  avg_actor_reward
-                                                                                                  ))
+                                                                                                 avg_grad_norm,
+                                                                                                 avg_reward,
+                                                                                                 avg_actor_reward
+                                                                                                 ))
 
             # In orther to avoid gradient exploding, we apply gradient clipping.
             torch_utils.clip_grad_norm_(self.model.parameters(),
@@ -188,7 +186,7 @@ class MinimumRiskTrainer(Trainer):
 
             if sample_cnt >= len(train.dataset.examples):
                 break
-            
+
         if verbose is VERBOSE_BATCH_WISE:
             progress_bar.close()
 
