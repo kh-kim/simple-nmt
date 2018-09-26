@@ -87,10 +87,10 @@ class Trainer():
             loss.div(y.size(0)).backward()
 
             # Simple math to show stats.
-            total_loss += loss
-            total_word_count += int(mini_batch.tgt[1].sum())
-            total_param_norm += utils.get_parameter_norm(self.model.parameters())
-            total_grad_norm += utils.get_grad_norm(self.model.parameters())
+            total_loss += loss.detach()
+            total_word_count += int(mini_batch.tgt[1].detach().sum())
+            total_param_norm += utils.get_parameter_norm(self.model.parameters()).detach()
+            total_grad_norm += utils.get_grad_norm(self.model.parameters()).detach()
 
             avg_loss = total_loss / total_word_count
             avg_param_norm = total_param_norm / (idx + 1)
@@ -225,8 +225,8 @@ class Trainer():
 
                 loss = self._get_loss(y_hat, y, crit)
 
-                total_loss += loss
-                total_word_count += int(mini_batch.tgt[1].sum())
+                total_loss += loss.detach()
+                total_word_count += int(mini_batch.tgt[1].detach().sum())
                 avg_loss = total_loss / total_word_count
 
                 sample_cnt += mini_batch.tgt[0].size(0)
