@@ -38,7 +38,7 @@ def define_argparser():
 
     p.add_argument('--batch_size',
                    type=int,
-                   default=64,
+                   default=32,
                    help='Mini batch size for gradient descent. Default=32'
                    )
     p.add_argument('--n_epochs',
@@ -64,7 +64,7 @@ def define_argparser():
                    )
     p.add_argument('--dropout',
                    type=float,
-                   default=.2,
+                   default=.3,
                    help='Dropout rate. Default=0.2'
                    )
     p.add_argument('--word_vec_dim',
