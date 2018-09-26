@@ -10,18 +10,20 @@ VERBOSE_SILENT = 0
 VERBOSE_EPOCH_WISE = 1
 VERBOSE_BATCH_WISE = 2
 
+X2Y, Y2X = 0, 1
 
-class Trainer():
 
-    def __init__(self, model, crit, config, **kwargs):
-        self.model = model
-        self.crit = crit
+class DualTrainer():
+
+    def __init__(self, models, crits, language_models, config, **kwargs):
+        self.models = models
+        self.crits = crits
+        self.language_models = language_models
         self.config = config
 
         super().__init__()
 
         self.n_epochs = config.n_epochs
-        self.lower_is_better = True
         self.best = {'epoch': 0,
                      'current_lr': config.lr,
                      'config': config,
@@ -29,30 +31,65 @@ class Trainer():
                      }
 
     def get_best_model(self):
-        self.model.load_state_dict(self.best['model'])
+        self.models[X2Y].load_state_dict(self.best['models'][X2Y])
+        self.models[Y2X].load_state_dict(self.best['models'][Y2X])
 
-        return self.model
+        return self.models
 
     def save_training(self, fn):
         torch.save(self.best, fn)
 
-    def _get_loss(self, y_hat, y, crit=None):
-        # |y_hat| = (batch_size, length, output_size)
-        # |y| = (batch_size, length)
-        crit = self.crit if crit is None else crit
-        loss = crit(y_hat.contiguous().view(-1, y_hat.size(-1)),
-                    y.contiguous().view(-1)
-                    )
+    def _get_loss(self, x, y, x_hat, y_hat, x_lm=None, y_lm=None, lagrange=1e-2):
+        # |x| = (batch_size, length0)
+        # |y| = (batch_size, length1)
+        # |x_hat| = (batch_size, length0, output_size0)
+        # |y_hat| = (batch_size, length1, output_size1)
+        # |x_lm| = |x_hat|
+        # |y_lm| = |y_hat|
 
-        return loss
+        losses = []
+        losses += [self.crits[X2Y](y_hat.contiguous().view(-1, y_hat.size(-1)),
+                                   y.contiguous().view(-1)
+                                   )]
+        losses += [self.crits[Y2X](x_hat.contiguous().view(-1, x_hat.size(-1)),
+                                   x.contiguous().view(-1)
+                                   )]
+        # |losses[X2Y]| = (batch_size * length1)
+        # |losses[Y2X]| = (batch_size * length0)
+
+        losses[X2Y] = losses[X2Y].view(y.size(0), -1).sum(dim=-1)
+        losses[Y2X] = losses[Y2X].view(x.size(0), -1).sum(dim=-1)
+        # |losses[X2Y]| = (batch_size)
+        # |losses[Y2X]| = (batch_size)
+
+        if x_lm is not None and y_lm is not None:
+            lm_losses = []
+            lm_losses += [self.crits[X2Y](y_lm.contiguous().view(-1, y_lm.size(-1)),
+                                          y.contiguous().view(-1)
+                                          )]
+            lm_losses += [self.crits[Y2X](x_lm.contiguous().view(-1, x_lm.size(-1)),
+                                          x.contiguous().view(-1)
+                                          )]
+            # |lm_losses[X2Y]| = (batch_size * length1)
+            # |lm_losses[Y2X]| = (batch_size * length0)
+
+            lm_losses[X2Y] = lm_losses[X2Y].view(y.size(0), -1).sum(dim=-1)
+            lm_losses[Y2X] = lm_losses[Y2X].view(x.size(0), -1).sum(dim=-1)
+            # |lm_losses[X2Y]| = (batch_size)
+            # |lm_losses[Y2X]| = (batch_size)
+
+            losses[X2Y] += lagrange * ((lm_losses[Y2X] + losses[X2Y]) - (lm_losses[X2Y] + losses[Y2X].detach()))**2
+            losses[Y2X] += lagrange * ((lm_losses[Y2X] + losses[X2Y].detach()) - (lm_losses[X2Y] + losses[Y2X]))**2
+
+        return losses[X2Y].sum(), losses[Y2X].sum()
 
     def train_epoch(self,
                     train,
-                    optimizer,
+                    optimizers,
                     verbose=VERBOSE_BATCH_WISE
                     ):
         '''
-        Train an epoch with given train iterator and optimizer.
+        Train an epoch with given train iterator and optimizers.
         '''
         total_loss, total_word_count = 0, 0
         total_param_norm, total_grad_norm = 0, 0
@@ -68,29 +105,49 @@ class Trainer():
             # Raw target variable has both BOS and EOS token. 
             # The output of sequence-to-sequence does not have BOS token. 
             # Thus, remove BOS token for reference.
-            x, y = mini_batch.src, mini_batch.tgt[0][:, 1:]
-            # |x| = (batch_size, length)
-            # |y| = (batch_size, length)
-
+            
             # You have to reset the gradients of all model parameters before to take another step in gradient descent.
-            optimizer.zero_grad()
+            optimizers[X2Y].zero_grad()
+            optimizers[Y2X].zero_grad()
 
-            # Take feed-forward
-            # Similar as before, the input of decoder does not have EOS token.
-            # Thus, remove EOS token for decoder input.
-            y_hat = self.model(x, mini_batch.tgt[0][:, :-1])
-            # |y_hat| = (batch_size, length, output_size)
+            x_0, y_0 = (mini_batch.src[0][:, 1:-1], 
+                        mini_batch.src[1] - 2
+                        ), mini_batch.tgt[0][:, :-1]
+            # |x_0| = (batch_size, length0)
+            # |y_0| = (batch_size, length1)
+            y_hat = self.models[X2Y](x_0, y_0)
+            # |y_hat| = (batch_size, length1, output_size1)
+            with torch.no_grad():
+                y_lm = self.language_models[X2Y](y_0)
+                # |y_lm| = |y_hat|
 
-            # Calcuate loss and gradients with back-propagation.
-            loss = self._get_loss(y_hat, y)
-            loss.div(y.size(0)).backward()
+            x_0, y_0 = mini_batch.src[0][:, :-1], (mini_batch.tgt[0][:, 1:-1], 
+                                                   mini_batch.tgt[1] - 2
+                                                   )
+            # |x_0| = (batch_size, length0)
+            # |y_0| = (batch_size, length1)
+            x_hat = self.models[Y2X](y_0, x_0)
+            # |x_hat| = (batch_size, length0, output_size0)
+            with torch.no_grad():
+                x_lm = self.language_models[Y2X](x_0)
+                # |x_lm| = |x_hat|
 
-            # Simple math to show stats.
-            # Don't forget to detach final variables.
-            total_loss += loss.detach()
-            total_word_count += int(mini_batch.tgt[1].detach().sum())
-            total_param_norm += utils.get_parameter_norm(self.model.parameters()).detach()
-            total_grad_norm += utils.get_grad_norm(self.model.parameters()).detach()
+            x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
+            losses = self._get_loss(x, y, x_hat, y_hat, x_lm, y_lm)
+            
+            losses[X2Y].div(y.size(0)).backward()
+            losses[Y2X].div(x.size(0)).backward()
+
+            total_loss += losses[X2Y].detach() + losses[Y2X].detach()
+            total_word_count += (int(mini_batch.src[1].detach().sum()) + 
+                                 int(mini_batch.tgt[1].detach().sum())
+                                 )
+            total_param_norm += (utils.get_parameter_norm(self.models[X2Y].parameters()).detach() + 
+                                 utils.get_parameter_norm(self.models[Y2X].parameters()).detach()
+                                 )
+            total_grad_norm += (utils.get_grad_norm(self.models[X2Y].parameters()).detach() +
+                                utils.get_grad_norm(self.models[Y2X].parameters()).detach()
+                                )
 
             avg_loss = total_loss / total_word_count
             avg_param_norm = total_param_norm / (idx + 1)
@@ -104,11 +161,16 @@ class Trainer():
                                                                                                  ))
 
             # In orther to avoid gradient exploding, we apply gradient clipping.
-            torch_utils.clip_grad_norm_(self.model.parameters(),
+            torch_utils.clip_grad_norm_(self.models[X2Y].parameters(),
                                         self.config.max_grad_norm
                                         )
+            torch_utils.clip_grad_norm_(self.models[Y2X].parameters(),
+                                        self.config.max_grad_norm
+                                        )
+            
             # Take a step of gradient descent.
-            optimizer.step()
+            optimizers[X2Y].step()
+            optimizers[Y2X].step()
 
             sample_cnt += mini_batch.tgt[0].size(0)
             if sample_cnt >= len(train.dataset.examples):
@@ -126,7 +188,7 @@ class Trainer():
         early stopping will be executed if the requirement is satisfied.
         '''
         current_lr = self.best['current_lr']
-        best_loss = float('Inf') * (1 if self.lower_is_better else -1)
+        best_loss = float('Inf')
         lowest_after = 0
 
         progress_bar = tqdm(range(self.best['epoch'], self.n_epochs),
@@ -138,9 +200,11 @@ class Trainer():
 
         for idx in progress_bar:  # Iterate from 1 to n_epochs
             if self.config.adam:
-                optimizer = optim.Adam(self.model.parameters(), lr=current_lr)
+                optimizers = [optim.Adam(self.models[X2Y].parameters(), lr=current_lr),
+                              optim.Adam(self.models[Y2X].parameters(), lr=current_lr)]
             else:
-                optimizer = optim.SGD(self.model.parameters(), lr=current_lr)
+                optimizers = [optim.SGD(self.models[X2Y].parameters(), lr=current_lr),
+                              optim.SGD(self.models[Y2X].parameters(), lr=current_lr)]
 
             if verbose > VERBOSE_EPOCH_WISE:
                 print('epoch: %d/%d\tmin_valid_loss=%.4e' % (idx + 1,
@@ -148,7 +212,7 @@ class Trainer():
                                                              best_loss
                                                              ))
             avg_train_loss, avg_param_norm, avg_grad_norm = self.train_epoch(train,
-                                                                             optimizer,
+                                                                             optimizers,
                                                                              verbose=verbose
                                                                              )
             avg_valid_loss = self.validate(valid, verbose=verbose)
@@ -162,14 +226,15 @@ class Trainer():
                                                                                                                                   best_loss
                                                                                                                                   ))
 
-            if (self.lower_is_better and avg_valid_loss < best_loss) or \
-               (not self.lower_is_better and avg_valid_loss > best_loss):
+            if avg_valid_loss < best_loss:
                 # Update if there is an improvement.
                 best_loss = avg_valid_loss
                 lowest_after = 0
 
-                self.best['model'] = self.model.state_dict()
-                self.best['optim'] = optimizer
+                self.best['models'] = [self.models[X2Y].state_dict(),
+                                       self.models[Y2X].state_dict()
+                                       ]
+                self.best['optim'] = optimizers
                 self.best['epoch'] = idx + 1
                 self.best['current_lr'] = current_lr
 
@@ -196,7 +261,6 @@ class Trainer():
 
     def validate(self,
                  valid,
-                 crit=None,
                  verbose=VERBOSE_BATCH_WISE
                  ):
         '''
@@ -212,19 +276,33 @@ class Trainer():
                                 unit='batch'
                                 ) if verbose is VERBOSE_BATCH_WISE else valid
 
-            self.model.eval()
+            self.models[X2Y].eval()
+            self.models[Y2X].eval()
             # Iterate for whole valid-set.
             for idx, mini_batch in enumerate(progress_bar):
-                x, y = mini_batch.src, mini_batch.tgt[0][:, 1:]
-                # |x| = (batch_size, length)
-                # |y| = (batch_size, length)
-                y_hat = self.model(x, mini_batch.tgt[0][:, :-1])
-                # |y_hat| = (batch_size, n_classes)
+                x_0, y_0 = (mini_batch.src[0][:, 1:-1],
+                            mini_batch.src[1] - 2
+                            ), mini_batch.tgt[0][:, :-1]
+                # |x_0| = (batch_size, length0)
+                # |y_0| = (batch_size, length1)
+                y_hat = self.models[X2Y](x_0, y_0)
+                # |y_hat| = (batch_size, length1, output_size1)
 
-                loss = self._get_loss(y_hat, y, crit)
+                x_0, y_0 = mini_batch.src[0][:, :-1], (mini_batch.tgt[0][:, 1:-1],
+                                                       mini_batch.tgt[1] - 2
+                                                       )
+                # |x_0| = (batch_size, length0)
+                # |y_0| = (batch_size, length1)
+                x_hat = self.models[Y2X](y_0, x_0)
+                # |x_hat| = (batch_size, length0, output_size0)
 
-                total_loss += loss.detach()
-                total_word_count += int(mini_batch.tgt[1].detach().sum())
+                x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
+                losses = self._get_loss(x, y, x_hat, y_hat)
+
+                total_loss += losses[X2Y].detach() + losses[Y2X].detach()
+                total_word_count += (int(mini_batch.src[1].detach().sum()) + 
+                                     int(mini_batch.tgt[1].detach().sum())
+                                     )
                 avg_loss = total_loss / total_word_count
 
                 sample_cnt += mini_batch.tgt[0].size(0)
@@ -236,7 +314,8 @@ class Trainer():
 
                 if sample_cnt >= len(valid.dataset.examples):
                     break
-            self.model.train()
+            self.models[X2Y].train()
+            self.models[Y2X].train()
 
             if verbose is VERBOSE_BATCH_WISE:
                 progress_bar.close()

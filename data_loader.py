@@ -17,7 +17,8 @@ class DataLoader():
                  fix_length=None,
                  use_bos=True,
                  use_eos=True,
-                 shuffle=True
+                 shuffle=True,
+                 dsl=False
                  ):
 
         super(DataLoader, self).__init__()
@@ -27,8 +28,8 @@ class DataLoader():
                               batch_first=True,
                               include_lengths=True,
                               fix_length=fix_length,
-                              init_token=None,
-                              eos_token=None
+                              init_token='<BOS>' if dsl else None,
+                              eos_token='<EOS>' if dsl else None
                               )
 
         self.tgt = data.Field(sequential=True,

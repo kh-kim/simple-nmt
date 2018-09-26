@@ -6,9 +6,13 @@ import torch.nn as nn
 
 from data_loader import DataLoader
 import data_loader
+
 from simple_nmt.seq2seq import Seq2Seq
+from simple_nmt.rnnlm import LanguageModel
+
 from simple_nmt.trainer import Trainer
 from simple_nmt.rl_trainer import MinimumRiskTrainer
+from simple_nmt.dual_trainer import DualTrainer
 
 
 def define_argparser():
@@ -117,6 +121,11 @@ def define_argparser():
                    help='Learning rate decay rate. Default=0.5'
                    )
 
+    p.add_argument('--dsl',
+                   action='store_true',
+                   help='Training with Dual Supervised Learning method.'
+                   )
+
     p.add_argument('--rl_lr',
                    type=float,
                    default=.01,
@@ -179,50 +188,118 @@ if __name__ == "__main__":
                         (config.lang[:2], config.lang[-2:]),
                         batch_size=config.batch_size,
                         device=config.gpu_id,
-                        max_length=config.max_length
+                        max_length=config.max_length,
+                        dsl=config.dsl
                         )
 
-    # Encoder's embedding layer input size
-    input_size = len(loader.src.vocab)
-    # Decoder's embedding layer input size and Generator's softmax layer output size
-    output_size = len(loader.tgt.vocab)
-    # Declare the model
-    model = Seq2Seq(input_size,
-                    config.word_vec_dim,  # Word embedding vector size
-                    config.hidden_size,  # LSTM's hidden vector size
-                    output_size,
-                    n_layers=config.n_layers,  # number of layers in LSTM
-                    dropout_p=config.dropout  # dropout-rate in LSTM
-                    )
+    if config.dsl:
+        models = [Seq2Seq(len(loader.src.vocab),
+                          config.word_vec_dim,
+                          config.hidden_size,
+                          len(loader.tgt.vocab),
+                          n_layers=config.n_layers,
+                          dropout_p=config.dropout
+                          ),
+                  Seq2Seq(len(loader.tgt.vocab),
+                          config.word_vec_dim,
+                          config.hidden_size,
+                          len(loader.src.vocab),
+                          n_layers=config.n_layers,
+                          dropout_p=config.dropout
+                          )
+                  ]
+        language_models = [LanguageModel(len(loader.tgt.vocab),
+                                         config.word_vec_dim,
+                                         config.hidden_size,
+                                         n_layers=config.n_layers,
+                                         dropout_p=config.dropout
+                                         ),
+                           LanguageModel(len(loader.src.vocab),
+                                         config.word_vec_dim,
+                                         config.hidden_size,
+                                         n_layers=config.n_layers,
+                                         dropout_p=config.dropout
+                                         )
+                           ]
+        loss_weights = [torch.ones(len(loader.tgt.vocab)),
+                        torch.ones(len(loader.src.vocab))
+                        ]
+        loss_weights[0][data_loader.PAD] = .0
+        loss_weights[1][data_loader.PAD] = .0
+        crits = [nn.NLLLoss(weight=loss_weights[0],
+                            reduction='none'
+                            ),
+                 nn.NLLLoss(weight=loss_weights[1],
+                            reduction='none'
+                            )
+                 ]
 
-    # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
-    # Thus, set a weight for PAD to zero.
-    loss_weight = torch.ones(output_size)
-    loss_weight[data_loader.PAD] = 0.
-    # Instead of using Cross-Entropy loss, we can use Negative Log-Likelihood(NLL) loss with log-probability.
-    criterion = nn.NLLLoss(weight=loss_weight, size_average=False)
+        print(models)
+        print(language_models)
+        print(crits)
 
-    print(model)
-    print(criterion)
+        if config.gpu_id >= 0:
+            for model, crit in zip(models, crits):
+                model.cuda(config.gpu_id)
+                crit.cuda(config.gpu_id)
 
-    # Pass models to GPU device if it is necessary.
-    if config.gpu_id >= 0:
-        model.cuda(config.gpu_id)
-        criterion.cuda(config.gpu_id)
+        trainer = DualTrainer(models,
+                              crits,
+                              language_models,
+                              config=config,
+                              src_vocab=loader.src.vocab,
+                              tgt_vocab=loader.tgt.vocab
+                              )
+        
+        if saved_data is not None:
+            trainer.best = saved_data
+            trainer.get_best_model()
 
-    # Start training. This function maybe equivalant to 'fit' function in Keras.
-    trainer = Trainer(model,
-                      criterion,
-                      config=config,
-                      src_vocab=loader.src.vocab,
-                      tgt_vocab=loader.tgt.vocab,
-                      )
-    # If we have loaded model weight parameters, use that weights for declared model.
-    if saved_data is not None:
-        trainer.best = saved_data
-        trainer.get_best_model()
+        trainer.train(loader.train_iter, loader.valid_iter, verbose=config.verbose)
+    else:
+        # Encoder's embedding layer input size
+        input_size = len(loader.src.vocab)
+        # Decoder's embedding layer input size and Generator's softmax layer output size
+        output_size = len(loader.tgt.vocab)
+        # Declare the model
+        model = Seq2Seq(input_size,
+                        config.word_vec_dim,  # Word embedding vector size
+                        config.hidden_size,  # LSTM's hidden vector size
+                        output_size,
+                        n_layers=config.n_layers,  # number of layers in LSTM
+                        dropout_p=config.dropout  # dropout-rate in LSTM
+                        )
 
-    trainer.train(loader.train_iter, loader.valid_iter, verbose=config.verbose)
+        # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
+        # Thus, set a weight for PAD to zero.
+        loss_weight = torch.ones(output_size)
+        loss_weight[data_loader.PAD] = 0.
+        # Instead of using Cross-Entropy loss, we can use Negative Log-Likelihood(NLL) loss with log-probability.
+        criterion = nn.NLLLoss(weight=loss_weight, 
+                               reduction='elementwise_sum'
+                               )
+
+        print(model)
+        print(criterion)
+
+        # Pass models to GPU device if it is necessary.
+        if config.gpu_id >= 0:
+            model.cuda(config.gpu_id)
+            criterion.cuda(config.gpu_id)
+
+        # Start training. This function maybe equivalant to 'fit' function in Keras.
+        trainer = Trainer(model,
+                          criterion,
+                          config=config,
+                          src_vocab=loader.src.vocab,
+                          tgt_vocab=loader.tgt.vocab
+                          )
+        # If we have loaded model weight parameters, use that weights for declared model.
+        if saved_data is not None:
+            trainer.best = saved_data
+            trainer.get_best_model()
+
+        trainer.train(loader.train_iter, loader.valid_iter, verbose=config.verbose)
 
     # Start reinforcement learning.
     if config.rl_n_epochs > 0:

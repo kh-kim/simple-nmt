@@ -91,7 +91,6 @@ class MinimumRiskTrainer(Trainer):
     def train_epoch(self,
                     train,
                     optimizer,
-                    batch_size=32,
                     max_grad_norm=5,
                     verbose=VERBOSE_SILENT
                     ):
@@ -195,7 +194,6 @@ class MinimumRiskTrainer(Trainer):
     def validate(self,
                  valid,
                  crit=None,
-                 batch_size=256,
                  verbose=VERBOSE_SILENT
                  ):
         '''
