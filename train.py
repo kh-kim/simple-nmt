@@ -7,7 +7,7 @@ import torch.nn as nn
 from data_loader import DataLoader
 import data_loader
 from simple_nmt.seq2seq import Seq2Seq
-import simple_nmt.trainer as trainer
+from simple_nmt.trainer import Trainer
 import simple_nmt.rl_trainer as rl_trainer
 
 
@@ -46,10 +46,10 @@ def define_argparser():
                    default=18,
                    help='Number of epochs to train. Default=18'
                    )
-    p.add_argument('--print_every',
+    p.add_argument('--verbose',
                    type=int,
-                   default=1000,
-                   help='Number of gradient descent steps to skip printing the training status. Default=1000'
+                   default=2,
+                   help='VERBOSE_SILENT = 0 VERBOSE_EPOCH_WISE = 1 VERBOSE_BATCH_WISE = 2'
                    )
     p.add_argument('--early_stop',
                    type=int,
@@ -215,16 +215,8 @@ if __name__ == "__main__":
         model.load_state_dict(saved_data['model'])
 
     # Start training. This function maybe equivalant to 'fit' function in Keras.
-    trainer.train_epoch(model,
-                        criterion,
-                        loader.train_iter,
-                        loader.valid_iter,
-                        config,
-                        start_epoch=saved_data['epoch'] if saved_data is not None else 1,
-                        others_to_save={'src_vocab': loader.src.vocab,
-                                        'tgt_vocab': loader.tgt.vocab
-                                        }  # We can put any object here to save with model.
-                        )
+    trainer = Trainer(model, criterion, config.lr)
+    trainer.train(loader.train_iter, loader.valid_iter, config)
 
     # Start reinforcement learning.
     if config.rl_n_epochs > 0:
