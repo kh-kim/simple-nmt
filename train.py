@@ -276,7 +276,7 @@ if __name__ == "__main__":
         loss_weight[data_loader.PAD] = 0.
         # Instead of using Cross-Entropy loss, we can use Negative Log-Likelihood(NLL) loss with log-probability.
         criterion = nn.NLLLoss(weight=loss_weight, 
-                               reduction='elementwise_sum'
+                               reduction='sum'
                                )
 
         print(model)
