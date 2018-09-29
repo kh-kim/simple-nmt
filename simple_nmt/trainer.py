@@ -192,6 +192,12 @@ class Trainer():
                 if lowest_after >= self.config.early_stop and \
                    self.config.early_stop > 0:
                     break
+
+            # Altough there is an improvement in last epoch, we need to decay the learning-rate if it meets the requirements.
+            if lowest_after > 0 or idx + 1 >= self.config.lr_decay_start_at:
+                current_lr = max(self.config.min_lr,
+                                 current_lr * self.config.lr_decay_rate
+                                 )
         if verbose is VERBOSE_EPOCH_WISE:
             progress_bar.close()
 
