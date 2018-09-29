@@ -1,4 +1,5 @@
 from tqdm import tqdm
+from math import exp
 
 import torch
 import torch.optim as optim
@@ -87,10 +88,10 @@ class Trainer():
 
             # Simple math to show stats.
             # Don't forget to detach final variables.
-            total_loss += loss.detach_()
-            total_word_count += int(mini_batch.tgt[1].detach_().sum())
-            total_param_norm += utils.get_parameter_norm(self.model.parameters()).detach_()
-            total_grad_norm += utils.get_grad_norm(self.model.parameters()).detach_()
+            total_loss += float(loss.detach_())
+            total_word_count += int(mini_batch.tgt[1].sum().detach_())
+            total_param_norm += float(utils.get_parameter_norm(self.model.parameters()).detach_())
+            total_grad_norm += float(utils.get_grad_norm(self.model.parameters()).detach_())
 
             avg_loss = total_loss / total_word_count
             avg_param_norm = total_param_norm / (idx + 1)
@@ -100,7 +101,7 @@ class Trainer():
                 progress_bar.set_postfix_str('|param|=%.2f |g_param|=%.2f loss=%.4e PPL=%.2f' % (avg_param_norm,
                                                                                                  avg_grad_norm,
                                                                                                  avg_loss,
-                                                                                                 avg_loss.exp()
+                                                                                                 exp(avg_loss)
                                                                                                  ))
 
             # In orther to avoid gradient exploding, we apply gradient clipping.
