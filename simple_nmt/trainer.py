@@ -87,10 +87,10 @@ class Trainer():
 
             # Simple math to show stats.
             # Don't forget to detach final variables.
-            total_loss += loss.detach()
-            total_word_count += int(mini_batch.tgt[1].detach().sum())
-            total_param_norm += utils.get_parameter_norm(self.model.parameters()).detach()
-            total_grad_norm += utils.get_grad_norm(self.model.parameters()).detach()
+            total_loss += loss.detach_()
+            total_word_count += int(mini_batch.tgt[1].detach_().sum())
+            total_param_norm += utils.get_parameter_norm(self.model.parameters()).detach_()
+            total_grad_norm += utils.get_grad_norm(self.model.parameters()).detach_()
 
             avg_loss = total_loss / total_word_count
             avg_param_norm = total_param_norm / (idx + 1)
