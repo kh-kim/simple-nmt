@@ -179,10 +179,10 @@ class Trainer():
                 model_fn = self.config.model.split('.')
                 model_fn = model_fn[:-1] + ['%02d' % (idx + 1),
                                             '%.2f-%.2f' % (avg_train_loss,
-                                                           avg_train_loss.exp()
+                                                           exp(avg_train_loss)
                                                            ),
                                             '%.2f-%.2f' % (avg_valid_loss,
-                                                           avg_valid_loss.exp()
+                                                           exp(avg_valid_loss)
                                                            )
                                             ] + [model_fn[-1]]
                 self.save_training('.'.join(model_fn))
@@ -238,7 +238,7 @@ class Trainer():
 
                 if verbose is VERBOSE_BATCH_WISE:
                     progress_bar.set_postfix_str('valid_loss=%.4e PPL=%.2f' % (avg_loss,
-                                                                               avg_loss.exp()
+                                                                               exp(avg_loss)
                                                                                ))
 
                 if sample_cnt >= len(valid.dataset.examples):
