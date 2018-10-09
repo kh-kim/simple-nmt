@@ -140,11 +140,15 @@ class Trainer():
                                                                           self.n_epochs
                                                                           )
 
+        if self.best['epoch'] > 0:
+            avg_valid_loss = self.validate(valid, verbose=verbose)
+
         for idx in progress_bar:  # Iterate from 1 to n_epochs
             if self.config.adam:
                 optimizer = optim.Adam(self.model.parameters(), lr=current_lr)
             else:
                 optimizer = optim.SGD(self.model.parameters(), lr=current_lr)
+            print('current_lr:', current_lr)
 
             if verbose > VERBOSE_EPOCH_WISE:
                 print('epoch: %d/%d\tmin_valid_loss=%.4e' % (idx + 1,
@@ -204,7 +208,7 @@ class Trainer():
 
             # Altough there is an improvement in last epoch, we need to decay the learning-rate if it meets the requirements.
             print(lowest_after, idx + 1, self.config.lr_decay_start_at)
-            if ((lowest_after > 0) or (idx + 1 >= self.config.lr_decay_start_at)) and (idx + 1 <= self.n_epochs):
+            if ((lowest_after > 0) or (idx + 1 >= self.config.lr_decay_start_at)) and (idx + 1 <= self.config.n_epochs):
                 current_lr = max(self.config.min_lr,
                                  current_lr * self.config.lr_decay_rate
                                  )

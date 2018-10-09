@@ -312,6 +312,8 @@ if __name__ == "__main__":
 
         if saved_data is not None:
             rl_trainer.best = saved_data
+            if rl_trainer.best['epoch'] == config.n_epochs:
+                rl_trainer.best['current_lr'] = config.rl_lr
             rl_trainer.get_best_model()
 
         rl_trainer.train(loader.train_iter,

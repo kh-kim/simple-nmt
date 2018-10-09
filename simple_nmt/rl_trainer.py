@@ -170,7 +170,7 @@ class MinimumRiskTrainer(Trainer):
             avg_grad_norm = total_grad_norm / (idx + 1)
 
             if verbose is VERBOSE_BATCH_WISE:
-                progress_bar.set_postfix_str('|g_param|=%.2f rwd=%.2e avg_rwd=%.2e BLEU=%.4f' % (avg_grad_norm,
+                progress_bar.set_postfix_str('|g_param|=%.2f rwd=%4.2f avg_frwd=%.2e BLEU=%.4f' % (avg_grad_norm,
                                                                                                  float(actor_reward.sum().div(y.size(0))),
                                                                                                  avg_reward,
                                                                                                  avg_actor_reward
