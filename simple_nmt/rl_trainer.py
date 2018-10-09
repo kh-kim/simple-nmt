@@ -158,11 +158,11 @@ class MinimumRiskTrainer(Trainer):
             self._get_gradient(y_hat, indice, reward=final_reward)
             
             # Simple math to show stats.
-            total_reward += final_reward.sum().detach()
-            total_actor_reward += actor_reward.sum().detach()
-            sample_cnt += actor_reward.size(0)
-            total_param_norm += utils.get_parameter_norm(self.model.parameters()).detach()
-            total_grad_norm += utils.get_grad_norm(self.model.parameters()).detach()
+            total_reward += float(final_reward.sum())
+            total_actor_reward += float(actor_reward.sum())
+            sample_cnt += int(actor_reward.size(0))
+            total_param_norm += float(utils.get_parameter_norm(self.model.parameters()))
+            total_grad_norm += float(utils.get_grad_norm(self.model.parameters()))
 
             avg_reward = total_reward / sample_cnt
             avg_actor_reward = total_actor_reward / sample_cnt
@@ -170,8 +170,8 @@ class MinimumRiskTrainer(Trainer):
             avg_grad_norm = total_grad_norm / (idx + 1)
 
             if verbose is VERBOSE_BATCH_WISE:
-                progress_bar.set_postfix_str('|param|=%.2f |g_param|=%.2f rwd=%.4e BLEU=%.4f' % (avg_param_norm,
-                                                                                                 avg_grad_norm,
+                progress_bar.set_postfix_str('|g_param|=%.2f rwd=%.2e avg_rwd=%.2e BLEU=%.4f' % (avg_grad_norm,
+                                                                                                 float(actor_reward.sum().div(y.size(0))),
                                                                                                  avg_reward,
                                                                                                  avg_actor_reward
                                                                                                  ))
@@ -227,8 +227,8 @@ class MinimumRiskTrainer(Trainer):
                                           n_gram=self.config.rl_n_gram
                                           )
 
-                total_reward += reward.sum().detach()
-                sample_cnt += mini_batch.tgt[0].size(0)
+                total_reward += float(reward.sum())
+                sample_cnt += int(mini_batch.tgt[0].size(0))
                 
                 avg_reward = total_reward / sample_cnt
 

@@ -68,7 +68,7 @@ def define_argparser():
                    )
     p.add_argument('--dropout',
                    type=float,
-                   default=.3,
+                   default=.2,
                    help='Dropout rate. Default=0.2'
                    )
     p.add_argument('--word_vec_dim',

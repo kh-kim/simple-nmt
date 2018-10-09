@@ -60,6 +60,9 @@ class Trainer():
         avg_loss, avg_param_norm, avg_grad_norm = 0, 0, 0
         sample_cnt = 0
 
+        if verbose == VERBOSE_BATCH_WISE:
+            print(optimizer)
+
         progress_bar = tqdm(train,
                             desc='Training: ',
                             unit='batch'
@@ -88,10 +91,10 @@ class Trainer():
 
             # Simple math to show stats.
             # Don't forget to detach final variables.
-            total_loss += float(loss.detach_())
-            total_word_count += int(mini_batch.tgt[1].sum().detach_())
-            total_param_norm += float(utils.get_parameter_norm(self.model.parameters()).detach_())
-            total_grad_norm += float(utils.get_grad_norm(self.model.parameters()).detach_())
+            total_loss += float(loss)
+            total_word_count += int(mini_batch.tgt[1].sum())
+            total_param_norm += float(utils.get_parameter_norm(self.model.parameters()))
+            total_grad_norm += float(utils.get_grad_norm(self.model.parameters()))
 
             avg_loss = total_loss / total_word_count
             avg_param_norm = total_param_norm / (idx + 1)
@@ -177,14 +180,20 @@ class Trainer():
                 # Set a filename for model of last epoch.
                 # We need to put every information to filename, as much as possible.
                 model_fn = self.config.model.split('.')
-                model_fn = model_fn[:-1] + ['%02d' % (idx + 1),
-                                            '%.2f-%.2f' % (avg_train_loss,
-                                                           exp(avg_train_loss)
-                                                           ),
-                                            '%.2f-%.2f' % (avg_valid_loss,
-                                                           exp(avg_valid_loss)
-                                                           )
-                                            ] + [model_fn[-1]]
+                if self.config.n_epochs >= idx + 1:
+                    model_fn = model_fn[:-1] + ['%02d' % (idx + 1),
+                                                '%.2f-%.2f' % (avg_train_loss,
+                                                               exp(avg_train_loss)
+                                                               ),
+                                                '%.2f-%.2f' % (avg_valid_loss,
+                                                               exp(avg_valid_loss)
+                                                               )
+                                                ] + [model_fn[-1]]
+                else:
+                    model_fn = model_fn[:-1] + ['%02d' % (idx + 1),
+                                                '%.2f' % (avg_train_loss),
+                                                '%.2f' % (avg_valid_loss)
+                                                ] + [model_fn[-1]]
                 self.save_training('.'.join(model_fn))
             else:
                 lowest_after += 1
@@ -194,7 +203,8 @@ class Trainer():
                     break
 
             # Altough there is an improvement in last epoch, we need to decay the learning-rate if it meets the requirements.
-            if lowest_after > 0 or idx + 1 >= self.config.lr_decay_start_at:
+            print(lowest_after, idx + 1, self.config.lr_decay_start_at)
+            if ((lowest_after > 0) or (idx + 1 >= self.config.lr_decay_start_at)) and (idx + 1 <= self.n_epochs):
                 current_lr = max(self.config.min_lr,
                                  current_lr * self.config.lr_decay_rate
                                  )
@@ -230,8 +240,8 @@ class Trainer():
 
                 loss = self._get_loss(y_hat, y, crit)
 
-                total_loss += loss.detach()
-                total_word_count += int(mini_batch.tgt[1].detach().sum())
+                total_loss += float(loss)
+                total_word_count += int(mini_batch.tgt[1].sum())
                 avg_loss = total_loss / total_word_count
 
                 sample_cnt += mini_batch.tgt[0].size(0)
