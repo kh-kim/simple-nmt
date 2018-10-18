@@ -174,7 +174,7 @@ if __name__ == "__main__":
     import os.path
     # If the model exists, load model and configuration to continue the training.
     if os.path.isfile(config.model):
-        saved_data = torch.load(config.model)
+        saved_data = torch.load(config.model, map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id)
 
         prev_config = saved_data['config']
         config = overwrite_config(config, prev_config)

@@ -84,7 +84,7 @@ if __name__ == '__main__':
     config = define_argparser()
 
     # Load saved model.
-    saved_data = torch.load(config.model)
+    saved_data = torch.load(config.model, map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id)
 
     # Load configuration setting in training.
     train_config = saved_data['config']

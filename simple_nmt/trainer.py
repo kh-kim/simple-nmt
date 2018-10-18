@@ -207,7 +207,6 @@ class Trainer():
                     break
 
             # Altough there is an improvement in last epoch, we need to decay the learning-rate if it meets the requirements.
-            print(lowest_after, idx + 1, self.config.lr_decay_start_at)
             if ((lowest_after > 0) or (idx + 1 >= self.config.lr_decay_start_at)) and (idx + 1 <= self.config.n_epochs):
                 current_lr = max(self.config.min_lr,
                                  current_lr * self.config.lr_decay_rate
