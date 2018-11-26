@@ -1,4 +1,5 @@
 from tqdm import tqdm
+from operator import itemgetter
 
 import torch
 import torch.optim as optim
@@ -38,6 +39,28 @@ class DualTrainer():
 
     def save_training(self, fn):
         torch.save(self.best, fn)
+
+    def _sort_by_length(self, x, lengths):
+        batch_size = x.size(0)
+        x = [x[i] for i in range(batch_size)]
+        lengths = [lengths[i] for i in range(batch_size)]
+        orders = [i for i in range(batch_size)]
+
+        sorted_tuples = sorted(zip(x, lengths, orders), key=itemgetter(1), reverse=True)
+        sorted_x = torch.stack([sorted_tuples[i][0] for i in range(batch_size)])
+        sorted_lengths = torch.stack([sorted_tuples[i][1] for i in range(batch_size)])
+        sorted_orders = [sorted_tuples[i][2] for i in range(batch_size)]
+
+        return sorted_x, sorted_lengths, sorted_orders
+
+    def _sort_by_order(self, x, orders):
+        batch_size = x.size(0)
+        x = [x[i] for i in range(batch_size)]
+        
+        sorted_tuples = sorted(zip(x, orders), key=itemgetter(1))
+        sorted_x = torch.stack([sorted_tuples[i][0] for i in range(batch_size)])
+
+        return sorted_x
 
     def _get_loss(self, x, y, x_hat, y_hat, x_lm=None, y_lm=None, lagrange=1e-2):
         # |x| = (batch_size, length0)
@@ -138,6 +161,9 @@ class DualTrainer():
             # |y_0| = (batch_size, length1)
             x_hat = self.models[Y2X](y_0, x_0).index_select(dim=0, index=restore_indice)
             # |x_hat| = (batch_size, length0, output_size0)
+
+            x_hat = self._sort_by_order(x_hat, sorted_y_orders)
+
             with torch.no_grad():
                 x_lm = self.language_models[Y2X](x_0)
                 # |x_lm| = |x_hat|
