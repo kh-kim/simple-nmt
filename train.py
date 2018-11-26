@@ -13,6 +13,7 @@ from simple_nmt.rnnlm import LanguageModel
 from simple_nmt.trainer import Trainer
 from simple_nmt.rl_trainer import MinimumRiskTrainer
 from simple_nmt.dual_trainer import DualTrainer
+from simple_nmt.lm_trainer import LanguageModelTrainer
 
 
 def define_argparser():
@@ -239,9 +240,22 @@ if __name__ == "__main__":
         print(crits)
 
         if config.gpu_id >= 0:
-            for model, crit in zip(models, crits):
+            for model, language_model, crit in zip(models, language_models, crits):
                 model.cuda(config.gpu_id)
+                language_model.cuda(config.gpu_id)
                 crit.cuda(config.gpu_id)
+
+        for language_model, crit, is_src in zip(language_models, crits, [False, True]):
+            lm_trainer = LanguageModelTrainer(language_model,
+                                              crit,
+                                              config=config,
+                                              is_src=is_src
+                                              )
+            lm_trainer.train(loader.train_iter,
+                             loader.valid_iter,
+                             verbose=config.verbose
+                             )
+            language_model.load_state_dict(lm_trainer.best['model'])
 
         trainer = DualTrainer(models,
                               crits,

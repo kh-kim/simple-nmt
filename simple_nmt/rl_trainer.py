@@ -19,10 +19,6 @@ VERBOSE_BATCH_WISE = 2
 class MinimumRiskTrainer(Trainer):
 
     def __init__(self, model, crit, config, **kwargs):
-        self.model = model
-        self.crit = crit
-        self.config = config
-
         super().__init__(model=model, crit=crit, config=config, **kwargs)
 
         self.n_epochs = config.n_epochs + config.rl_n_epochs

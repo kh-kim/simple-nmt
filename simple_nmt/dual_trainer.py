@@ -110,7 +110,7 @@ class DualTrainer():
             optimizers[X2Y].zero_grad()
             optimizers[Y2X].zero_grad()
 
-            x_0, y_0 = (mini_batch.src[0][:, 1:-1], 
+            x_0, y_0 = (mini_batch.src[0][:, 1:-1],  # Remove BOS and EOS
                         mini_batch.src[1] - 2
                         ), mini_batch.tgt[0][:, :-1]
             # |x_0| = (batch_size, length0)
@@ -121,12 +121,22 @@ class DualTrainer():
                 y_lm = self.language_models[X2Y](y_0)
                 # |y_lm| = |y_hat|
 
-            x_0, y_0 = mini_batch.src[0][:, :-1], (mini_batch.tgt[0][:, 1:-1], 
-                                                   mini_batch.tgt[1] - 2
-                                                   )
+            def reordering(t, l):
+                indice = l.topk(l.size(0))[1]
+                t_ = t.index_select(dim=0, index=indice).contiguous()
+                l_ = l.index_select(dim=0, index=indice).contiguous()
+
+                restore_indice = (-indice).topk(l.size(0))[1]
+
+                return t_, l_, restore_indice
+
+            y_0_0, y_0_1, restore_indice = reordering(mini_batch.tgt[0][:, 1:-1], # Remove BOS and EOS
+                                                      mini_batch.tgt[1] - 2
+                                                      )
+            x_0, y_0 = mini_batch.src[0][:, :-1], (y_0_0, y_0_1)
             # |x_0| = (batch_size, length0)
             # |y_0| = (batch_size, length1)
-            x_hat = self.models[Y2X](y_0, x_0)
+            x_hat = self.models[Y2X](y_0, x_0).index_select(dim=0, index=restore_indice)
             # |x_hat| = (batch_size, length0, output_size0)
             with torch.no_grad():
                 x_lm = self.language_models[Y2X](x_0)
