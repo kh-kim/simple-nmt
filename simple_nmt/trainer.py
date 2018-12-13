@@ -56,8 +56,8 @@ class Trainer():
         Train an epoch with given train iterator and optimizer.
         '''
         total_loss, total_word_count = 0, 0
-        total_param_norm, total_grad_norm = 0, 0
-        avg_loss, avg_param_norm, avg_grad_norm = 0, 0, 0
+        total_grad_norm = 0
+        avg_loss, avg_grad_norm = 0, 0
         sample_cnt = 0
 
         if verbose == VERBOSE_BATCH_WISE:
@@ -93,15 +93,13 @@ class Trainer():
             # Don't forget to detach final variables.
             total_loss += float(loss)
             total_word_count += int(mini_batch.tgt[1].sum())
-            total_param_norm += float(utils.get_parameter_norm(self.model.parameters()))
             total_grad_norm += float(utils.get_grad_norm(self.model.parameters()))
 
             avg_loss = total_loss / total_word_count
-            avg_param_norm = total_param_norm / (idx + 1)
             avg_grad_norm = total_grad_norm / (idx + 1)
 
             if verbose is VERBOSE_BATCH_WISE:
-                progress_bar.set_postfix_str('|param|=%.2f |g_param|=%.2f loss=%.4e PPL=%.2f' % (avg_param_norm,
+                progress_bar.set_postfix_str('|param|=%.2f |g_param|=%.2f loss=%.4e PPL=%.2f' % (param_norm,
                                                                                                  avg_grad_norm,
                                                                                                  avg_loss,
                                                                                                  exp(avg_loss)
@@ -115,13 +113,14 @@ class Trainer():
             optimizer.step()
 
             sample_cnt += mini_batch.tgt[0].size(0)
-            if sample_cnt >= len(train.dataset.examples):
+
+            if idx >= len(progress_bar) * self.config.train_ratio_per_epoch:
                 break
 
         if verbose is VERBOSE_BATCH_WISE:
             progress_bar.close()
 
-        return avg_loss, avg_param_norm, avg_grad_norm
+        return avg_loss, param_norm, avg_grad_norm
 
     def train(self, train, valid, verbose=VERBOSE_EPOCH_WISE):
         '''
@@ -254,8 +253,9 @@ class Trainer():
                                                                                exp(avg_loss)
                                                                                ))
 
-                if sample_cnt >= len(valid.dataset.examples):
+                if idx >= len(progress_bar):
                     break
+
             self.model.train()
 
             if verbose is VERBOSE_BATCH_WISE:

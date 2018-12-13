@@ -21,19 +21,16 @@ class LanguageModelTrainer(Trainer):
 
         super().__init__(model=model, crit=crit, config=config, **kwargs)
 
-        self.n_epochs = 5
+        self.n_epochs = config.lm_n_epochs
 
     def train_epoch(self, train, optimizer, verbose=VERBOSE_BATCH_WISE):
         '''
         Train an epoch with given train iterator and optimizer.
         '''
         total_loss, total_word_count = 0, 0
-        total_param_norm, total_grad_norm = 0, 0
-        avg_loss, avg_param_norm, avg_grad_norm = 0, 0, 0
+        total_grad_norm = 0
+        avg_loss, avg_grad_norm = 0, 0
         sample_cnt = 0
-
-        if verbose == VERBOSE_BATCH_WISE:
-            print(optimizer)
 
         progress_bar = tqdm(train,
                             desc='Training: ',
@@ -60,15 +57,14 @@ class LanguageModelTrainer(Trainer):
             # Don't forget to detach final variables.
             total_loss += float(loss)
             total_word_count += int(mini_batch.src[1].sum() if self.is_src else mini_batch.tgt[1].sum())
-            total_param_norm += float(utils.get_parameter_norm(self.model.parameters()))
+            param_norm = float(utils.get_parameter_norm(self.model.parameters()))
             total_grad_norm += float(utils.get_grad_norm(self.model.parameters()))
 
             avg_loss = total_loss / total_word_count
-            avg_param_norm = total_param_norm / (idx + 1)
             avg_grad_norm = total_grad_norm / (idx + 1)
 
             if verbose is VERBOSE_BATCH_WISE:
-                progress_bar.set_postfix_str('|param|=%.2f |g_param|=%.2f loss=%.4e PPL=%.2f' % (avg_param_norm,
+                progress_bar.set_postfix_str('|param|=%.2f |g_param|=%.2f loss=%.4e PPL=%.2f' % (param_norm,
                                                                                                  avg_grad_norm,
                                                                                                  avg_loss,
                                                                                                  exp(avg_loss)
@@ -82,13 +78,13 @@ class LanguageModelTrainer(Trainer):
             optimizer.step()
 
             sample_cnt += x.size(0)
-            if sample_cnt >= len(train.dataset.examples):
+            if idx >= len(progress_bar):
                 break
 
         if verbose is VERBOSE_BATCH_WISE:
             progress_bar.close()
 
-        return avg_loss, avg_param_norm, avg_grad_norm
+        return avg_loss, param_norm, avg_grad_norm
 
 
     def train(self, train, valid, verbose=VERBOSE_EPOCH_WISE):
@@ -106,10 +102,8 @@ class LanguageModelTrainer(Trainer):
         if self.best['epoch'] > 0:
             avg_valid_loss = self.validate(valid, verbose=verbose)
 
-        for idx in progress_bar:  # Iterate from 1 to n_epochs
-            optimizer = optim.Adam(self.model.parameters())
-            print('current_lr:', current_lr)
-
+        optimizer = optim.Adam(self.model.parameters())
+        for idx in progress_bar:  # Iterate from 1 to n_epochs            
             if verbose > VERBOSE_EPOCH_WISE:
                 print('epoch: %d/%d\tmin_valid_loss=%.4e' % (idx + 1,
                                                              self.n_epochs,
@@ -189,9 +183,9 @@ class LanguageModelTrainer(Trainer):
                     progress_bar.set_postfix_str('valid_loss=%.4e PPL=%.2f' % (avg_loss,
                                                                                exp(avg_loss)
                                                                                ))
-
-                if sample_cnt >= len(valid.dataset.examples):
+                if idx >= len(progress_bar):
                     break
+
             self.model.train()
 
             if verbose is VERBOSE_BATCH_WISE:

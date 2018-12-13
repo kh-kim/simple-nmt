@@ -94,7 +94,7 @@ class MinimumRiskTrainer(Trainer):
         Train an epoch with given train iterator and optimizer.
         '''
         total_reward, total_actor_reward = 0, 0
-        total_param_norm, total_grad_norm = 0, 0
+        total_grad_norm = 0
         avg_reward, avg_actor_reward = 0, 0
         avg_param_norm, avg_grad_norm = 0, 0
         sample_cnt = 0
@@ -157,12 +157,10 @@ class MinimumRiskTrainer(Trainer):
             total_reward += float(final_reward.sum())
             total_actor_reward += float(actor_reward.sum())
             sample_cnt += int(actor_reward.size(0))
-            total_param_norm += float(utils.get_parameter_norm(self.model.parameters()))
             total_grad_norm += float(utils.get_grad_norm(self.model.parameters()))
 
             avg_reward = total_reward / sample_cnt
             avg_actor_reward = total_actor_reward / sample_cnt
-            avg_param_norm = total_param_norm / (idx + 1)
             avg_grad_norm = total_grad_norm / (idx + 1)
 
             if verbose is VERBOSE_BATCH_WISE:
@@ -179,13 +177,14 @@ class MinimumRiskTrainer(Trainer):
             # Take a step of gradient descent.
             optimizer.step()
 
-            if sample_cnt >= len(train.dataset.examples):
+
+            if idx >= len(progress_bar) * self.config.train_ratio_per_epoch:
                 break
 
         if verbose is VERBOSE_BATCH_WISE:
             progress_bar.close()
 
-        return avg_actor_reward, avg_param_norm, avg_grad_norm
+        return avg_actor_reward, param_norm, avg_grad_norm
 
     def validate(self,
                  valid,
@@ -231,8 +230,9 @@ class MinimumRiskTrainer(Trainer):
                 if verbose is VERBOSE_BATCH_WISE:
                     progress_bar.set_postfix_str('valid_BLEU=%.4f' % avg_reward)
 
-                if sample_cnt >= len(valid.dataset.examples):
+                if idx >= len(progress_bar):
                     break
+
             self.model.train()
 
             if verbose is VERBOSE_BATCH_WISE:

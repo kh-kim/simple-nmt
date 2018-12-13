@@ -121,11 +121,36 @@ def define_argparser():
                    default=.5,
                    help='Learning rate decay rate. Default=0.5'
                    )
+    p.add_argument('--train_ratio_per_epoch',
+                   type=float,
+                   default=1.,
+                   help='Ratio of using train-set in one training epoch. Default=1.'
+                   )
 
     p.add_argument('--dsl',
                    action='store_true',
                    help='Training with Dual Supervised Learning method.'
                    )
+    p.add_argument('--lm_n_epochs',
+                   type=int,
+                   default=10,
+                   help='Number of epochs for language model training. Default=5'
+                   )
+    p.add_argument('--dsl_n_epochs',
+                   type=int,
+                   default=15,
+                   help='Number of epochs for Dual Supervised Learning. \'--n_epochs\' - \'--dsl_n_epochs\' will be number of epochs for pretraining (without regularization term).'
+                   )
+    p.add_argument('--dsl_lambda',
+                   type=float,
+                   default=1e-2,
+                   help='Lagrangian Multiplier for regularization term. Default=1e-2')
+    p.add_argument('--dsl_retrain_lm',
+                   action='store_true',
+                   help='Retrain the language models whatever.')
+    p.add_argument('--dsl_continue_train_lm',
+                   action='store_true',
+                   help='Continue to train the language models watever.')
 
     p.add_argument('--rl_lr',
                    type=float,
@@ -179,9 +204,15 @@ if __name__ == "__main__":
 
         prev_config = saved_data['config']
         config = overwrite_config(config, prev_config)
-        config.lr = saved_data['current_lr']
+        config.lr = saved_data['current_lr'] if saved_data.get('current_lr') is not None else config.lr
     else:
         saved_data = None
+
+    def _print_config(config):
+        import pprint
+        pp = pprint.PrettyPrinter(indent=4)
+        pp.pprint(vars(config))
+    _print_config(config)
 
     # Load training and validation data set.
     loader = DataLoader(config.train,
@@ -225,8 +256,10 @@ if __name__ == "__main__":
         loss_weights = [torch.ones(len(loader.tgt.vocab)),
                         torch.ones(len(loader.src.vocab))
                         ]
+
         loss_weights[0][data_loader.PAD] = .0
         loss_weights[1][data_loader.PAD] = .0
+
         crits = [nn.NLLLoss(weight=loss_weights[0],
                             reduction='none'
                             ),
@@ -245,17 +278,29 @@ if __name__ == "__main__":
                 language_model.cuda(config.gpu_id)
                 crit.cuda(config.gpu_id)
 
-        for language_model, crit, is_src in zip(language_models, crits, [False, True]):
-            lm_trainer = LanguageModelTrainer(language_model,
-                                              crit,
-                                              config=config,
-                                              is_src=is_src
-                                              )
-            lm_trainer.train(loader.train_iter,
-                             loader.valid_iter,
-                             verbose=config.verbose
-                             )
-            language_model.load_state_dict(lm_trainer.best['model'])
+        if saved_data is None or config.dsl_retrain_lm is True or config.dsl_continue_train_lm is True:
+            if saved_data is not None and config.dsl_continue_train_lm is True:
+                for lm, lm_weight in zip(language_models, saved_data['lms']):
+                    lm.load_state_dict(lm_weight)
+
+            for language_model, crit, is_src in zip(language_models, crits, [False, True]):
+                lm_trainer = LanguageModelTrainer(language_model,
+                                                  crit,
+                                                  config=config,
+                                                  is_src=is_src
+                                                  )
+                lm_trainer.train(loader.train_iter,
+                                 loader.valid_iter,
+                                 verbose=config.verbose
+                                 )
+
+                language_model.load_state_dict(lm_trainer.best['model'])
+                print('A language model from best epoch %d is loaded.' % lm_trainer.best['epoch'])
+
+            if saved_data is not None:
+                saved_data['lms'] = [lm.state_dict() for lm in language_models]
+        else:
+            print('Skip the langauge model training.')
 
         trainer = DualTrainer(models,
                               crits,
@@ -289,21 +334,21 @@ if __name__ == "__main__":
         loss_weight = torch.ones(output_size)
         loss_weight[data_loader.PAD] = 0.
         # Instead of using Cross-Entropy loss, we can use Negative Log-Likelihood(NLL) loss with log-probability.
-        criterion = nn.NLLLoss(weight=loss_weight, 
-                               reduction='sum'
-                               )
+        crit = nn.NLLLoss(weight=loss_weight, 
+                          reduction='sum'
+                          )
 
         print(model)
-        print(criterion)
+        print(crit)
 
         # Pass models to GPU device if it is necessary.
         if config.gpu_id >= 0:
             model.cuda(config.gpu_id)
-            criterion.cuda(config.gpu_id)
+            crit.cuda(config.gpu_id)
 
         # Start training. This function maybe equivalant to 'fit' function in Keras.
         trainer = Trainer(model,
-                          criterion,
+                          crit,
                           config=config,
                           src_vocab=loader.src.vocab,
                           tgt_vocab=loader.tgt.vocab
@@ -315,22 +360,22 @@ if __name__ == "__main__":
 
         trainer.train(loader.train_iter, loader.valid_iter, verbose=config.verbose)
 
-    # Start reinforcement learning.
-    if config.rl_n_epochs > 0:
-        rl_trainer = MinimumRiskTrainer(model,
-                                        criterion,
-                                        config=config,
-                                        src_vocab=loader.src.vocab,
-                                        tgt_vocab=loader.tgt.vocab,
-                                        )
+        # Start reinforcement learning.
+        if config.rl_n_epochs > 0:
+            rl_trainer = MinimumRiskTrainer(model,
+                                            crit,
+                                            config=config,
+                                            src_vocab=loader.src.vocab,
+                                            tgt_vocab=loader.tgt.vocab,
+                                            )
 
-        if saved_data is not None:
-            rl_trainer.best = saved_data
-            if rl_trainer.best['epoch'] == config.n_epochs:
-                rl_trainer.best['current_lr'] = config.rl_lr
-            rl_trainer.get_best_model()
+            if saved_data is not None:
+                rl_trainer.best = saved_data
+                if rl_trainer.best['epoch'] == config.n_epochs:
+                    rl_trainer.best['current_lr'] = config.rl_lr
+                rl_trainer.get_best_model()
 
-        rl_trainer.train(loader.train_iter,
-                         loader.valid_iter,
-                         verbose=config.verbose
-                         )
+            rl_trainer.train(loader.train_iter,
+                            loader.valid_iter,
+                            verbose=config.verbose
+                            )
