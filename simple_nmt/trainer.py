@@ -93,6 +93,7 @@ class Trainer():
             # Don't forget to detach final variables.
             total_loss += float(loss)
             total_word_count += int(mini_batch.tgt[1].sum())
+            param_norm = float(utils.get_parameter_norm(self.model.parameters()))
             total_grad_norm += float(utils.get_grad_norm(self.model.parameters()))
 
             avg_loss = total_loss / total_word_count
