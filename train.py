@@ -138,13 +138,13 @@ def define_argparser():
                    )
     p.add_argument('--dsl_n_epochs',
                    type=int,
-                   default=15,
+                   default=10,
                    help='Number of epochs for Dual Supervised Learning. \'--n_epochs\' - \'--dsl_n_epochs\' will be number of epochs for pretraining (without regularization term).'
                    )
     p.add_argument('--dsl_lambda',
                    type=float,
-                   default=1e-2,
-                   help='Lagrangian Multiplier for regularization term. Default=1e-2')
+                   default=1e-3,
+                   help='Lagrangian Multiplier for regularization term. Default=1e-3')
     p.add_argument('--dsl_retrain_lm',
                    action='store_true',
                    help='Retrain the language models whatever.')
@@ -224,7 +224,8 @@ if __name__ == "__main__":
                         dsl=config.dsl
                         )
 
-    if config.dsl:
+    if config.dsl: # In case of the dual supervised training mode is turn-on.
+        # Because we must train both models in same time, we need to declare both models.
         models = [Seq2Seq(len(loader.src.vocab),
                           config.word_vec_dim,
                           config.hidden_size,
@@ -240,6 +241,7 @@ if __name__ == "__main__":
                           dropout_p=config.dropout
                           )
                   ]
+        # Because we also need to get P(src) and P(tgt), we need language models consist of LSTM.
         language_models = [LanguageModel(len(loader.tgt.vocab),
                                          config.word_vec_dim,
                                          config.hidden_size,
@@ -259,7 +261,11 @@ if __name__ == "__main__":
 
         loss_weights[0][data_loader.PAD] = .0
         loss_weights[1][data_loader.PAD] = .0
+        # Both loss weights have bais about PAD index.
 
+        # Because language model and translation model have same output size, 
+        # (if the output language is the same)
+        # we can use same loss function for each direction.
         crits = [nn.NLLLoss(weight=loss_weights[0],
                             reduction='none'
                             ),
@@ -279,10 +285,12 @@ if __name__ == "__main__":
                 crit.cuda(config.gpu_id)
 
         if saved_data is None or config.dsl_retrain_lm is True or config.dsl_continue_train_lm is True:
+            # In case of resuming the language model training
             if saved_data is not None and config.dsl_continue_train_lm is True:
                 for lm, lm_weight in zip(language_models, saved_data['lms']):
                     lm.load_state_dict(lm_weight)
 
+            # Start to train the language models for --lm_n_epochs
             for language_model, crit, is_src in zip(language_models, crits, [False, True]):
                 lm_trainer = LanguageModelTrainer(language_model,
                                                   crit,
@@ -294,7 +302,7 @@ if __name__ == "__main__":
                                  verbose=config.verbose
                                  )
 
-                language_model.load_state_dict(lm_trainer.best['model'])
+                language_model.load_state_dict(lm_trainer.best['model']) # Pick the best one.
                 print('A language model from best epoch %d is loaded.' % lm_trainer.best['epoch'])
 
             if saved_data is not None:
@@ -302,6 +310,7 @@ if __name__ == "__main__":
         else:
             print('Skip the langauge model training.')
 
+        # Start dual supervised learning
         trainer = DualTrainer(models,
                               crits,
                               language_models,

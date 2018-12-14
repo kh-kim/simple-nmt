@@ -12,6 +12,7 @@ VERBOSE_SILENT = 0
 VERBOSE_EPOCH_WISE = 1
 VERBOSE_BATCH_WISE = 2
 
+# In order to avoid to use hard coding.
 X2Y, Y2X = 0, 1
 
 
@@ -44,16 +45,26 @@ class DualTrainer():
         return self.models
 
     def _reordering(self, x, y, l):
+        # This method is one of important methods in this class.
+        # Since encoder takes packed_sequence instance,
+        # the samples in mini-batch must be sorted by lengths.
+        # Thus, we need to re-order the samples in mini-batch, if src and tgt is reversed.
+        # (Because originally src and tgt are sorted by the length of samples in src.)
+
+        # sort by length.
         indice = l.topk(l.size(0))[1]
+
+        # re-order based on the indice.
         x_ = x.index_select(dim=0, index=indice).contiguous()
         y_ = y.index_select(dim=0, index=indice).contiguous()
         l_ = l.index_select(dim=0, index=indice).contiguous()
 
+        # generate information to restore the re-ordering.
         restore_indice = (-indice).topk(l.size(0))[1]
 
         return x_, y_, l_, restore_indice
 
-    def _get_loss(self, x, y, x_hat, y_hat, x_lm=None, y_lm=None, lagrange=1e-2):
+    def _get_loss(self, x, y, x_hat, y_hat, x_lm=None, y_lm=None, lagrange=1e-3):
         # |x| = (batch_size, length0)
         # |y| = (batch_size, length1)
         # |x_hat| = (batch_size, length0, output_size0)
@@ -92,7 +103,10 @@ class DualTrainer():
             # |lm_losses[X2Y]| = (batch_size)
             # |lm_losses[Y2X]| = (batch_size)
 
+            # just for information
             dual_loss = lagrange * ((-lm_losses[Y2X] + -losses[X2Y].detach()) - (-lm_losses[X2Y] + -losses[Y2X].detach()))**2
+
+            # Note that 'detach()' is following the loss for another direction.
             dual_loss_x2y = lagrange * ((-lm_losses[Y2X] + -losses[X2Y]) - (-lm_losses[X2Y] + -losses[Y2X].detach()))**2
             dual_loss_y2x = lagrange * ((-lm_losses[Y2X] + -losses[X2Y].detach()) - (-lm_losses[X2Y] + -losses[Y2X]))**2
 
@@ -143,6 +157,8 @@ class DualTrainer():
                 y_lm = self.language_models[X2Y](y_0)
                 # |y_lm| = |y_hat|
 
+            # Since encoder in seq2seq takes packed_sequence instance,
+            # we need to re-sort if we use reversed src and tgt.
             x_0, y_0_0, y_0_1, restore_indice = self._reordering(mini_batch.src[0][:, :-1],
                                                                  mini_batch.tgt[0][:, 1:-1], # Remove BOS and EOS
                                                                  mini_batch.tgt[1] - 2
@@ -164,6 +180,8 @@ class DualTrainer():
                                     y_hat,
                                     x_lm,
                                     y_lm,
+                                    # According to the paper, DSL should be warm-started.
+                                    # Thus, we turn-off the regularization at the beginning.
                                     lagrange=self.config.dsl_lambda if not no_regularization else .0
                                     )
             
@@ -241,6 +259,7 @@ class DualTrainer():
                                                              self.n_epochs,
                                                              best_loss
                                                              ))
+            # Turn off the dual regularization term before the DSL start.
             if idx < self.config.n_epochs - self.config.dsl_n_epochs:
                 no_regularization = True
             else:
