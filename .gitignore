@@ -2,3 +2,10 @@ data/*
 models/*
 *.pyc
 .vscode/settings.json
+test/*
+._.DS_Store
+.DS_Store
+tmp.txt
+mecab
+nlp_preprocessing
+

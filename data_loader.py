@@ -17,7 +17,8 @@ class DataLoader():
                  fix_length=None,
                  use_bos=True,
                  use_eos=True,
-                 shuffle=True
+                 shuffle=True,
+                 dsl=False
                  ):
 
         super(DataLoader, self).__init__()
@@ -27,8 +28,8 @@ class DataLoader():
                               batch_first=True,
                               include_lengths=True,
                               fix_length=fix_length,
-                              init_token=None,
-                              eos_token=None
+                              init_token='<BOS>' if dsl else None,
+                              eos_token='<EOS>' if dsl else None
                               )
 
         self.tgt = data.Field(sequential=True,
@@ -106,7 +107,7 @@ class TranslationDataset(data.Dataset):
         src_path, trg_path = tuple(os.path.expanduser(path + x) for x in exts)
 
         examples = []
-        with open(src_path) as src_file, open(trg_path) as trg_file:
+        with open(src_path, encoding='utf-8') as src_file, open(trg_path, encoding='utf-8') as trg_file:
             for src_line, trg_line in zip(src_file, trg_file):
                 src_line, trg_line = src_line.strip(), trg_line.strip()
                 if max_length and max_length < max(len(src_line.split()),
@@ -117,7 +118,7 @@ class TranslationDataset(data.Dataset):
                     examples.append(data.Example.fromlist(
                         [src_line, trg_line], fields))
 
-        super(TranslationDataset, self).__init__(examples, fields, **kwargs)
+        super().__init__(examples, fields, **kwargs)
 
 
 if __name__ == '__main__':

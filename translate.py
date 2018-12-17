@@ -1,5 +1,6 @@
 import argparse
 import sys
+import codecs
 from operator import itemgetter
 
 import torch
@@ -42,6 +43,11 @@ def define_argparser():
                    default=5,
                    help='Beam size for beam search. Default=5'
                    )
+    p.add_argument('--lang',
+                   type=str,
+                   default=None,
+                   help='Source language and target language. Example: enko'
+                   )
 
     config = p.parse_args()
 
@@ -51,6 +57,8 @@ def define_argparser():
 def read_text():
     # This method gets sentences from standard input and tokenize those.
     lines = []
+
+    sys.stdin = codecs.getreader("utf-8")(sys.stdin.detach())
 
     for line in sys.stdin:
         if line.strip() != '':
@@ -81,16 +89,34 @@ def to_text(indice, vocab):
 
 
 if __name__ == '__main__':
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
     config = define_argparser()
 
     # Load saved model.
-    saved_data = torch.load(config.model)
+    saved_data = torch.load(config.model, map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id)
 
     # Load configuration setting in training.
     train_config = saved_data['config']
-    # Load vocabularies from the model.
-    src_vocab = saved_data['src_vocab']
-    tgt_vocab = saved_data['tgt_vocab']
+
+    if train_config.dsl:
+        assert config.lang is not None
+
+        if config.lang == train_config.lang:
+            is_reverse = False
+        else:
+            is_reverse = True
+
+        if not is_reverse:
+            # Load vocabularies from the model.
+            src_vocab = saved_data['src_vocab']
+            tgt_vocab = saved_data['tgt_vocab']
+        else:
+            src_vocab = saved_data['tgt_vocab']
+            tgt_vocab = saved_data['src_vocab']
+    else:
+        # Load vocabularies from the model.
+        src_vocab = saved_data['src_vocab']
+        tgt_vocab = saved_data['tgt_vocab']
 
     # Initialize dataloader, but we don't need to read training & test corpus.
     # What we need is just load vocabularies from the previously trained model.
@@ -107,7 +133,14 @@ if __name__ == '__main__':
                     n_layers=train_config.n_layers,
                     dropout_p=train_config.dropout
                     )
-    model.load_state_dict(saved_data['model'])  # Load weight parameters from the trained model.
+
+    if train_config.dsl:
+        if not is_reverse:
+            model.load_state_dict(saved_data['models'][0])
+        else:
+            model.load_state_dict(saved_data['models'][1])
+    else:
+        model.load_state_dict(saved_data['model'])  # Load weight parameters from the trained model.
     model.eval()  # We need to turn-on the evaluation mode, which turns off all drop-outs.
 
     # We don't need to draw a computation graph, because we will have only inferences.
@@ -127,6 +160,7 @@ if __name__ == '__main__':
             # Therefore, we need to memorize the original index of the sentence.
             sorted_lines = lines[:config.batch_size]
             lines = lines[config.batch_size:]
+
             lengths = [len(_) for _ in sorted_lines]
             orders = [i for i in range(len(sorted_lines))]
 

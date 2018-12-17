@@ -6,9 +6,14 @@ import torch.nn as nn
 
 from data_loader import DataLoader
 import data_loader
+
 from simple_nmt.seq2seq import Seq2Seq
-import simple_nmt.trainer as trainer
-import simple_nmt.rl_trainer as rl_trainer
+from simple_nmt.rnnlm import LanguageModel
+
+from simple_nmt.trainer import Trainer
+from simple_nmt.rl_trainer import MinimumRiskTrainer
+from simple_nmt.dual_trainer import DualTrainer
+from simple_nmt.lm_trainer import LanguageModelTrainer
 
 
 def define_argparser():
@@ -38,7 +43,7 @@ def define_argparser():
 
     p.add_argument('--batch_size',
                    type=int,
-                   default=64,
+                   default=32,
                    help='Mini batch size for gradient descent. Default=32'
                    )
     p.add_argument('--n_epochs',
@@ -46,10 +51,10 @@ def define_argparser():
                    default=18,
                    help='Number of epochs to train. Default=18'
                    )
-    p.add_argument('--print_every',
+    p.add_argument('--verbose',
                    type=int,
-                   default=1000,
-                   help='Number of gradient descent steps to skip printing the training status. Default=1000'
+                   default=2,
+                   help='VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2'
                    )
     p.add_argument('--early_stop',
                    type=int,
@@ -116,6 +121,36 @@ def define_argparser():
                    default=.5,
                    help='Learning rate decay rate. Default=0.5'
                    )
+    p.add_argument('--train_ratio_per_epoch',
+                   type=float,
+                   default=1.,
+                   help='Ratio of using train-set in one training epoch. Default=1.'
+                   )
+
+    p.add_argument('--dsl',
+                   action='store_true',
+                   help='Training with Dual Supervised Learning method.'
+                   )
+    p.add_argument('--lm_n_epochs',
+                   type=int,
+                   default=10,
+                   help='Number of epochs for language model training. Default=5'
+                   )
+    p.add_argument('--dsl_n_epochs',
+                   type=int,
+                   default=10,
+                   help='Number of epochs for Dual Supervised Learning. \'--n_epochs\' - \'--dsl_n_epochs\' will be number of epochs for pretraining (without regularization term).'
+                   )
+    p.add_argument('--dsl_lambda',
+                   type=float,
+                   default=1e-3,
+                   help='Lagrangian Multiplier for regularization term. Default=1e-3')
+    p.add_argument('--dsl_retrain_lm',
+                   action='store_true',
+                   help='Retrain the language models whatever.')
+    p.add_argument('--dsl_continue_train_lm',
+                   action='store_true',
+                   help='Continue to train the language models watever.')
 
     p.add_argument('--rl_lr',
                    type=float,
@@ -165,13 +200,19 @@ if __name__ == "__main__":
     import os.path
     # If the model exists, load model and configuration to continue the training.
     if os.path.isfile(config.model):
-        saved_data = torch.load(config.model)
+        saved_data = torch.load(config.model, map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id)
 
         prev_config = saved_data['config']
         config = overwrite_config(config, prev_config)
-        config.lr = saved_data['current_lr']
+        config.lr = saved_data['current_lr'] if saved_data.get('current_lr') is not None else config.lr
     else:
         saved_data = None
+
+    def _print_config(config):
+        import pprint
+        pp = pprint.PrettyPrinter(indent=4)
+        pp.pprint(vars(config))
+    _print_config(config)
 
     # Load training and validation data set.
     loader = DataLoader(config.train,
@@ -179,62 +220,171 @@ if __name__ == "__main__":
                         (config.lang[:2], config.lang[-2:]),
                         batch_size=config.batch_size,
                         device=config.gpu_id,
-                        max_length=config.max_length
+                        max_length=config.max_length,
+                        dsl=config.dsl
                         )
 
-    # Encoder's embedding layer input size
-    input_size = len(loader.src.vocab)
-    # Decoder's embedding layer input size and Generator's softmax layer output size
-    output_size = len(loader.tgt.vocab)
-    # Declare the model
-    model = Seq2Seq(input_size,
-                    config.word_vec_dim,  # Word embedding vector size
-                    config.hidden_size,  # LSTM's hidden vector size
-                    output_size,
-                    n_layers=config.n_layers,  # number of layers in LSTM
-                    dropout_p=config.dropout  # dropout-rate in LSTM
-                    )
+    if config.dsl: # In case of the dual supervised training mode is turn-on.
+        # Because we must train both models in same time, we need to declare both models.
+        models = [Seq2Seq(len(loader.src.vocab),
+                          config.word_vec_dim,
+                          config.hidden_size,
+                          len(loader.tgt.vocab),
+                          n_layers=config.n_layers,
+                          dropout_p=config.dropout
+                          ),
+                  Seq2Seq(len(loader.tgt.vocab),
+                          config.word_vec_dim,
+                          config.hidden_size,
+                          len(loader.src.vocab),
+                          n_layers=config.n_layers,
+                          dropout_p=config.dropout
+                          )
+                  ]
+        # Because we also need to get P(src) and P(tgt), we need language models consist of LSTM.
+        language_models = [LanguageModel(len(loader.tgt.vocab),
+                                         config.word_vec_dim,
+                                         config.hidden_size,
+                                         n_layers=config.n_layers,
+                                         dropout_p=config.dropout
+                                         ),
+                           LanguageModel(len(loader.src.vocab),
+                                         config.word_vec_dim,
+                                         config.hidden_size,
+                                         n_layers=config.n_layers,
+                                         dropout_p=config.dropout
+                                         )
+                           ]
+        loss_weights = [torch.ones(len(loader.tgt.vocab)),
+                        torch.ones(len(loader.src.vocab))
+                        ]
 
-    # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
-    # Thus, set a weight for PAD to zero.
-    loss_weight = torch.ones(output_size)
-    loss_weight[data_loader.PAD] = 0.
-    # Instead of using Cross-Entropy loss, we can use Negative Log-Likelihood(NLL) loss with log-probability.
-    criterion = nn.NLLLoss(weight=loss_weight, size_average=False)
+        loss_weights[0][data_loader.PAD] = .0
+        loss_weights[1][data_loader.PAD] = .0
+        # Both loss weights have bais about PAD index.
 
-    print(model)
-    print(criterion)
+        # Because language model and translation model have same output size, 
+        # (if the output language is the same)
+        # we can use same loss function for each direction.
+        crits = [nn.NLLLoss(weight=loss_weights[0],
+                            reduction='none'
+                            ),
+                 nn.NLLLoss(weight=loss_weights[1],
+                            reduction='none'
+                            )
+                 ]
 
-    # Pass models to GPU device if it is necessary.
-    if config.gpu_id >= 0:
-        model.cuda(config.gpu_id)
-        criterion.cuda(config.gpu_id)
+        print(models)
+        print(language_models)
+        print(crits)
 
-    # If we have loaded model weight parameters, use that weights for declared model.
-    if saved_data is not None:
-        model.load_state_dict(saved_data['model'])
+        if config.gpu_id >= 0:
+            for model, language_model, crit in zip(models, language_models, crits):
+                model.cuda(config.gpu_id)
+                language_model.cuda(config.gpu_id)
+                crit.cuda(config.gpu_id)
 
-    # Start training. This function maybe equivalant to 'fit' function in Keras.
-    trainer.train_epoch(model,
-                        criterion,
-                        loader.train_iter,
-                        loader.valid_iter,
-                        config,
-                        start_epoch=saved_data['epoch'] if saved_data is not None else 1,
-                        others_to_save={'src_vocab': loader.src.vocab,
-                                        'tgt_vocab': loader.tgt.vocab
-                                        }  # We can put any object here to save with model.
+        if saved_data is None or config.dsl_retrain_lm is True or config.dsl_continue_train_lm is True:
+            # In case of resuming the language model training
+            if saved_data is not None and config.dsl_continue_train_lm is True:
+                for lm, lm_weight in zip(language_models, saved_data['lms']):
+                    lm.load_state_dict(lm_weight)
+
+            # Start to train the language models for --lm_n_epochs
+            for language_model, crit, is_src in zip(language_models, crits, [False, True]):
+                lm_trainer = LanguageModelTrainer(language_model,
+                                                  crit,
+                                                  config=config,
+                                                  is_src=is_src
+                                                  )
+                lm_trainer.train(loader.train_iter,
+                                 loader.valid_iter,
+                                 verbose=config.verbose
+                                 )
+
+                language_model.load_state_dict(lm_trainer.best['model']) # Pick the best one.
+                print('A language model from best epoch %d is loaded.' % lm_trainer.best['epoch'])
+
+            if saved_data is not None:
+                saved_data['lms'] = [lm.state_dict() for lm in language_models]
+        else:
+            print('Skip the langauge model training.')
+
+        # Start dual supervised learning
+        trainer = DualTrainer(models,
+                              crits,
+                              language_models,
+                              config=config,
+                              src_vocab=loader.src.vocab,
+                              tgt_vocab=loader.tgt.vocab
+                              )
+        
+        if saved_data is not None:
+            trainer.best = saved_data
+            trainer.get_best_model()
+
+        trainer.train(loader.train_iter, loader.valid_iter, verbose=config.verbose)
+    else:
+        # Encoder's embedding layer input size
+        input_size = len(loader.src.vocab)
+        # Decoder's embedding layer input size and Generator's softmax layer output size
+        output_size = len(loader.tgt.vocab)
+        # Declare the model
+        model = Seq2Seq(input_size,
+                        config.word_vec_dim,  # Word embedding vector size
+                        config.hidden_size,  # LSTM's hidden vector size
+                        output_size,
+                        n_layers=config.n_layers,  # number of layers in LSTM
+                        dropout_p=config.dropout  # dropout-rate in LSTM
                         )
 
-    # Start reinforcement learning.
-    if config.rl_n_epochs > 0:
-        rl_trainer.train_epoch(model,
-                               criterion,  # Although it does not use cross-entropy loss, but its equation equals to use entropy.
-                               loader.train_iter,
-                               loader.valid_iter,
-                               config,
-                               start_epoch=(saved_data['epoch'] - config.n_epochs) if saved_data is not None else 1,
-                               others_to_save={'src_vocab': loader.src.vocab,
-                                               'tgt_vocab': loader.tgt.vocab
-                                               }
-                               )
+        # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
+        # Thus, set a weight for PAD to zero.
+        loss_weight = torch.ones(output_size)
+        loss_weight[data_loader.PAD] = 0.
+        # Instead of using Cross-Entropy loss, we can use Negative Log-Likelihood(NLL) loss with log-probability.
+        crit = nn.NLLLoss(weight=loss_weight, 
+                          reduction='sum'
+                          )
+
+        print(model)
+        print(crit)
+
+        # Pass models to GPU device if it is necessary.
+        if config.gpu_id >= 0:
+            model.cuda(config.gpu_id)
+            crit.cuda(config.gpu_id)
+
+        # Start training. This function maybe equivalant to 'fit' function in Keras.
+        trainer = Trainer(model,
+                          crit,
+                          config=config,
+                          src_vocab=loader.src.vocab,
+                          tgt_vocab=loader.tgt.vocab
+                          )
+        # If we have loaded model weight parameters, use that weights for declared model.
+        if saved_data is not None:
+            trainer.best = saved_data
+            trainer.get_best_model()
+
+        trainer.train(loader.train_iter, loader.valid_iter, verbose=config.verbose)
+
+        # Start reinforcement learning.
+        if config.rl_n_epochs > 0:
+            rl_trainer = MinimumRiskTrainer(model,
+                                            crit,
+                                            config=config,
+                                            src_vocab=loader.src.vocab,
+                                            tgt_vocab=loader.tgt.vocab,
+                                            )
+
+            if saved_data is not None:
+                rl_trainer.best = saved_data
+                if rl_trainer.best['epoch'] == config.n_epochs:
+                    rl_trainer.best['current_lr'] = config.rl_lr
+                rl_trainer.get_best_model()
+
+            rl_trainer.train(loader.train_iter,
+                            loader.valid_iter,
+                            verbose=config.verbose
+                            )
