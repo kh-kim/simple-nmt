@@ -127,7 +127,7 @@ if __name__ == '__main__':
 
     # Declare sequence-to-sequence model.
     model = Seq2Seq(input_size,
-                    train_config.word_vec_dim,
+                    train_config.word_vec_size,
                     train_config.hidden_size,
                     output_size,
                     n_layers=train_config.n_layers,

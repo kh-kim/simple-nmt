@@ -130,14 +130,14 @@ class MaximumLikelihoodEstimationTrainer():
 
     @staticmethod
     def save_model(engine, train_engine, config, src_vocab, tgt_vocab):
-        avg_train_loss = train_engine.state_metrics['loss']
-        avg_valid_loss = engine.state_metrics['loss']
+        avg_train_loss = train_engine.state.metrics['loss']
+        avg_valid_loss = engine.state.metrics['loss']
 
         # Set a filename for model of last epoch.
         # We need to put every information to filename, as much as possible.
         model_fn = config.model_fn.split('.')
         
-        model_fn = model_fn[:-1] + ['%02d' % (train_engine.epoch_idx + 1),
+        model_fn = model_fn[:-1] + ['%02d' % (train_engine.epoch_idx),
                                     '%.2f-%.2f' % (avg_train_loss,
                                                    np.exp(avg_train_loss)
                                                    ),
