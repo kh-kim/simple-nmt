@@ -297,7 +297,7 @@ class DualTrainer():
 
                 # Set a filename for model of last epoch.
                 # We need to put every information to filename, as much as possible.
-                model_fn = self.config.model.split('.')
+                model_fn = self.config.model_fn.split('.')
                 model_fn = model_fn[:-1] + ['%02d' % (idx + 1),
                                             '%.2f-%.2f' % (avg_train_loss,
                                                            exp(avg_train_loss)

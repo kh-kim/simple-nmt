@@ -133,7 +133,7 @@ class MinimumRiskTrainer(Trainer):
             # I figured out that n_samples = 1 would be enough.
             baseline = []
             with torch.no_grad():
-                for i in range(self.config.n_samples):
+                for i in range(self.config.rl_n_samples):
                     _, sampled_indice = self.model.search(x,
                                                           is_greedy=False,
                                                           max_length=self.config.max_length
@@ -142,7 +142,7 @@ class MinimumRiskTrainer(Trainer):
                                                   y,
                                                   n_gram=self.config.rl_n_gram
                                                   )]
-                baseline = torch.stack(baseline).sum(dim=0).div(self.config.n_samples)
+                baseline = torch.stack(baseline).sum(dim=0).div(self.config.rl_n_samples)
                 # |baseline| = (n_samples, batch_size) --> (batch_size)
 
             # Now, we have relatively expected cumulative reward.

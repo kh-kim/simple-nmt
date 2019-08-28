@@ -19,159 +19,194 @@ from simple_nmt.lm_trainer import LanguageModelTrainer
 def define_argparser():
     p = argparse.ArgumentParser()
 
-    p.add_argument('--model',
-                   required=True,
-                   help='Model file name to save. Additional information would be annotated to the file name.'
-                   )
-    p.add_argument('--train',
-                   required=True,
-                   help='Training set file name except the extention. (ex: train.en --> train)'
-                   )
-    p.add_argument('--valid',
-                   required=True,
-                   help='Validation set file name except the extention. (ex: valid.en --> valid)'
-                   )
-    p.add_argument('--lang',
-                   required=True,
-                   help='Set of extention represents language pair. (ex: en + ko --> enko)'
-                   )
-    p.add_argument('--gpu_id',
-                   type=int,
-                   default=-1,
-                   help='GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=-1'
-                   )
+    p.add_argument(
+        '--model_fn',
+        required=True,
+        help='Model file name to save. Additional information would be annotated to the file name.'
+    )
+    p.add_argument(
+        '--train',
+        required=True,
+        help='Training set file name except the extention. (ex: train.en --> train)'
+    )
+    p.add_argument(
+        '--valid',
+        required=True,
+        help='Validation set file name except the extention. (ex: valid.en --> valid)'
+    )
+    p.add_argument(
+        '--lang',
+        required=True,
+        help='Set of extention represents language pair. (ex: en + ko --> enko)'
+    )
+    p.add_argument(
+        '--gpu_id',
+        type=int,
+        default=-1,
+        help='GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=-1'
+    )
 
-    p.add_argument('--batch_size',
-                   type=int,
-                   default=32,
-                   help='Mini batch size for gradient descent. Default=32'
-                   )
-    p.add_argument('--n_epochs',
-                   type=int,
-                   default=18,
-                   help='Number of epochs to train. Default=18'
-                   )
-    p.add_argument('--verbose',
-                   type=int,
-                   default=2,
-                   help='VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2'
-                   )
-    p.add_argument('--early_stop',
-                   type=int,
-                   default=-1,
-                   help='The training will be stopped if there is no improvement this number of epochs. Default=-1'
-                   )
+    p.add_argument(
+        '--batch_size',
+        type=int,
+        default=32,
+        help='Mini batch size for gradient descent. Default=32'
+    )
+    p.add_argument(
+        '--n_epochs',
+        type=int,
+        default=18,
+        help='Number of epochs to train. Default=18'
+    )
+    p.add_argument(
+        '--verbose',
+        type=int,
+        default=2,
+        help='VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2'
+    )
+    p.add_argument(
+        '--early_stop',
+        type=int,
+        default=-1,
+        help='The training will be stopped if there is no improvement this number of epochs. Default=-1'
+    )
 
-    p.add_argument('--max_length',
-                   type=int,
-                   default=80,
-                   help='Maximum length of the training sequence. Default=80'
-                   )
-    p.add_argument('--dropout',
-                   type=float,
-                   default=.2,
-                   help='Dropout rate. Default=0.2'
-                   )
-    p.add_argument('--word_vec_dim',
-                   type=int,
-                   default=256,
-                   help='Word embedding vector dimension. Default=512'
-                   )
-    p.add_argument('--hidden_size',
-                   type=int,
-                   default=512,
-                   help='Hidden size of LSTM. Default=768'
-                   )
-    p.add_argument('--n_layers',
-                   type=int,
-                   default=4,
-                   help='Number of layers in LSTM. Default=4'
-                   )
+    p.add_argument(
+        '--max_length',
+        type=int,
+        default=80,
+        help='Maximum length of the training sequence. Default=80'
+    )
+    p.add_argument(
+        '--dropout',
+        type=float,
+        default=.2,
+        help='Dropout rate. Default=0.2'
+    )
+    p.add_argument(
+        '--word_vec_size',
+        type=int,
+        default=256,
+        help='Word embedding vector dimension. Default=512'
+    )
+    p.add_argument(
+        '--hidden_size',
+        type=int,
+        default=512,
+        help='Hidden size of LSTM. Default=768'
+    )
+    p.add_argument(
+        '--n_layers',
+        type=int,
+        default=4,
+        help='Number of layers in LSTM. Default=4'
+    )
 
-    p.add_argument('--max_grad_norm',
-                   type=float,
-                   default=5.,
-                   help='Threshold for gradient clipping. Default=5.0'
-                   )
-    p.add_argument('--adam',
-                   action='store_true',
-                   help='Use Adam instead of using SGD.'
-                   )
-    p.add_argument('--lr',
-                   type=float,
-                   default=1.,
-                   help='Initial learning rate. Default=1.0'
-                   )
-    p.add_argument('--min_lr',
-                   type=float,
-                   default=.000001,
-                   help='Minimum learning rate. Default=.000001'
-                   )
-    p.add_argument('--lr_decay_start_at',
-                   type=int,
-                   default=10,
-                   help='Start learning rate decay from this epoch.'
-                   )
-    p.add_argument('--lr_slow_decay',
-                   action='store_true',
-                   help='Decay learning rate only if there is no improvement on last epoch.'
-                   )
-    p.add_argument('--lr_decay_rate',
-                   type=float,
-                   default=.5,
-                   help='Learning rate decay rate. Default=0.5'
-                   )
-    p.add_argument('--train_ratio_per_epoch',
-                   type=float,
-                   default=1.,
-                   help='Ratio of using train-set in one training epoch. Default=1.'
-                   )
+    p.add_argument(
+        '--max_grad_norm',
+        type=float,
+        default=5.,
+        help='Threshold for gradient clipping. Default=5.0'
+    )
+    p.add_argument(
+        '--adam',
+        action='store_true',
+        help='Use Adam instead of using SGD.'
+    )
+    p.add_argument(
+        '--lr',
+        type=float,
+        default=1.,
+        help='Initial learning rate. Default=1.0'
+    )
+    p.add_argument(
+        '--min_lr',
+        type=float,
+        default=.000001,
+        help='Minimum learning rate. Default=.000001'
+    )
+    p.add_argument(
+        '--lr_decay_start_at',
+        type=int,
+        default=10,
+        help='Start learning rate decay from this epoch.'
+    )
+    p.add_argument(
+        '--lr_slow_decay',
+        action='store_true',
+        help='Decay learning rate only if there is no improvement on last epoch.'
+    )
+    p.add_argument(
+        '--lr_decay_rate',
+        type=float,
+        default=.5,
+        help='Learning rate decay rate. Default=0.5'
+    )
+    p.add_argument(
+        '--train_ratio_per_epoch',
+        type=float,
+        default=1.,
+        help='Ratio of using train-set in one training epoch. Default=1.'
+    )
 
-    p.add_argument('--dsl',
-                   action='store_true',
-                   help='Training with Dual Supervised Learning method.'
-                   )
-    p.add_argument('--lm_n_epochs',
-                   type=int,
-                   default=10,
-                   help='Number of epochs for language model training. Default=5'
-                   )
-    p.add_argument('--dsl_n_epochs',
-                   type=int,
-                   default=10,
-                   help='Number of epochs for Dual Supervised Learning. \'--n_epochs\' - \'--dsl_n_epochs\' will be number of epochs for pretraining (without regularization term).'
-                   )
-    p.add_argument('--dsl_lambda',
-                   type=float,
-                   default=1e-3,
-                   help='Lagrangian Multiplier for regularization term. Default=1e-3')
-    p.add_argument('--dsl_retrain_lm',
-                   action='store_true',
-                   help='Retrain the language models whatever.')
-    p.add_argument('--dsl_continue_train_lm',
-                   action='store_true',
-                   help='Continue to train the language models watever.')
+    p.add_argument(
+        '--rl_lr',
+        type=float,
+        default=.01,
+        help='Learning rate for reinforcement learning. Default=.01'
+    )
+    p.add_argument(
+        '--rl_n_samples',
+        type=int,
+        default=1,
+        help='Number of samples to get baseline. Default=1'
+    )
+    p.add_argument(
+        '--rl_n_epochs',
+        type=int,
+        default=10,
+        help='Number of epochs for reinforcement learning. Default=10'
+    )
+    p.add_argument(
+        '--rl_n_gram',
+        type=int,
+        default=6,
+        help='Maximum number of tokens to calculate BLEU for reinforcement learning. Default=6'
+    )
 
-    p.add_argument('--rl_lr',
-                   type=float,
-                   default=.01,
-                   help='Learning rate for reinforcement learning. Default=.01'
-                   )
-    p.add_argument('--n_samples',
-                   type=int,
-                   default=1,
-                   help='Number of samples to get baseline. Default=1'
-                   )
-    p.add_argument('--rl_n_epochs',
-                   type=int,
-                   default=10,
-                   help='Number of epochs for reinforcement learning. Default=10'
-                   )
-    p.add_argument('--rl_n_gram',
-                   type=int,
-                   default=6,
-                   help='Maximum number of tokens to calculate BLEU for reinforcement learning. Default=6'
-                   )
+    p.add_argument(
+        '--dsl',
+        action='store_true',
+        help='Training with Dual Supervised Learning method.'
+    )
+    p.add_argument(
+        '--lm_n_epochs',
+        type=int,
+        default=10,
+        help='Number of epochs for language model training. Default=5'
+    )
+    p.add_argument(
+        '--dsl_n_epochs',
+        type=int,
+        default=10,
+        help='Number of epochs for Dual Supervised Learning. \'--n_epochs\' - \'--dsl_n_epochs\' will be number of epochs for pretraining (without regularization term).'
+    )
+    p.add_argument(
+        '--dsl_lambda',
+        type=float,
+        default=1e-3,
+        help='Lagrangian Multiplier for regularization term. Default=1e-3'
+    )
+    p.add_argument(
+        '--dsl_retrain_lm',
+        action='store_true',
+        help='Retrain the language models whatever.'
+    )
+    p.add_argument(
+        '--dsl_continue_train_lm',
+        action='store_true',
+        help='Continue to train the language models watever.'
+    )
 
     config = p.parse_args()
 
@@ -199,8 +234,8 @@ if __name__ == "__main__":
 
     import os.path
     # If the model exists, load model and configuration to continue the training.
-    if os.path.isfile(config.model):
-        saved_data = torch.load(config.model, map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id)
+    if os.path.isfile(config.model_fn):
+        saved_data = torch.load(config.model_fn, map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id)
 
         prev_config = saved_data['config']
         config = overwrite_config(config, prev_config)
@@ -227,14 +262,14 @@ if __name__ == "__main__":
     if config.dsl: # In case of the dual supervised training mode is turn-on.
         # Because we must train both models in same time, we need to declare both models.
         models = [Seq2Seq(len(loader.src.vocab),
-                          config.word_vec_dim,
+                          config.word_vec_size,
                           config.hidden_size,
                           len(loader.tgt.vocab),
                           n_layers=config.n_layers,
                           dropout_p=config.dropout
                           ),
                   Seq2Seq(len(loader.tgt.vocab),
-                          config.word_vec_dim,
+                          config.word_vec_size,
                           config.hidden_size,
                           len(loader.src.vocab),
                           n_layers=config.n_layers,
@@ -243,13 +278,13 @@ if __name__ == "__main__":
                   ]
         # Because we also need to get P(src) and P(tgt), we need language models consist of LSTM.
         language_models = [LanguageModel(len(loader.tgt.vocab),
-                                         config.word_vec_dim,
+                                         config.word_vec_size,
                                          config.hidden_size,
                                          n_layers=config.n_layers,
                                          dropout_p=config.dropout
                                          ),
                            LanguageModel(len(loader.src.vocab),
-                                         config.word_vec_dim,
+                                         config.word_vec_size,
                                          config.hidden_size,
                                          n_layers=config.n_layers,
                                          dropout_p=config.dropout
@@ -331,7 +366,7 @@ if __name__ == "__main__":
         output_size = len(loader.tgt.vocab)
         # Declare the model
         model = Seq2Seq(input_size,
-                        config.word_vec_dim,  # Word embedding vector size
+                        config.word_vec_size,  # Word embedding vector size
                         config.hidden_size,  # LSTM's hidden vector size
                         output_size,
                         n_layers=config.n_layers,  # number of layers in LSTM
