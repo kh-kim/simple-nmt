@@ -50,7 +50,7 @@ def define_argparser():
     p.add_argument(
         '--n_epochs',
         type=int,
-        default=18,
+        default=15,
         help='Number of epochs to train. Default=18'
     )
     p.add_argument(
@@ -75,13 +75,13 @@ def define_argparser():
     p.add_argument(
         '--word_vec_size',
         type=int,
-        default=256,
+        default=512,
         help='Word embedding vector dimension. Default=512'
     )
     p.add_argument(
         '--hidden_size',
         type=int,
-        default=512,
+        default=768,
         help='Hidden size of LSTM. Default=768'
     )
     p.add_argument(
