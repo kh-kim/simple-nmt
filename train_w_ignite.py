@@ -1,6 +1,7 @@
 import argparse
 
 import torch
+from torch import optim
 import torch.nn as nn
 
 from data_loader import DataLoader
@@ -8,8 +9,6 @@ import data_loader
 
 from simple_nmt.seq2seq import Seq2Seq
 from simple_nmt.rnnlm import LanguageModel
-
-from simple_nmt.mle_trainer import MaximumLikelihoodEstimationTrainer as MLETrainer
 
 
 def define_argparser():
@@ -161,7 +160,7 @@ def define_argparser():
 
     return config
 
-def main(config):
+def main(config, model_weight=None, opt_weight=None):
     def print_config(config):
         import pprint
         pp = pprint.PrettyPrinter(indent=4)
@@ -181,6 +180,7 @@ def main(config):
     if config.dsl:
         pass
     else:
+        from simple_nmt.mle_trainer import MaximumLikelihoodEstimationTrainer as MLETrainer
         # Encoder's embedding layer input size
         input_size = len(loader.src.vocab)
         # Decoder's embedding layer input size and Generator's softmax layer output size
@@ -194,6 +194,8 @@ def main(config):
                         dropout_p=config.dropout  # dropout-rate in LSTM
                         )
 
+        
+
         # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
         # Thus, set a weight for PAD to zero.
         loss_weight = torch.ones(output_size)
@@ -206,21 +208,49 @@ def main(config):
         print(model)
         print(crit)
 
+        if model_weight is not None:
+            model.load_state_dict(model_weight)
+
         # Pass models to GPU device if it is necessary.
         if config.gpu_id >= 0:
             model.cuda(config.gpu_id)
             crit.cuda(config.gpu_id)
+
+        optimizer = optim.Adam(model.parameters())     
+        if opt_weight is not None:
+            optimizer.load_state_dict(opt_weight)        
+        print(optimizer)
 
         # Start training. This function maybe equivalant to 'fit' function in Keras.
         mle_trainer = MLETrainer(config)
         mle_trainer.train(
             model,
             crit,
+            optimizer,
             train_loader=loader.train_iter,
             valid_loader=loader.valid_iter,
             src_vocab=loader.src.vocab,
             tgt_vocab=loader.tgt.vocab,
+            n_epochs=config.n_epochs,
         )
+
+        if config.rl_n_epochs > 0:
+            optimizer = optim.Adam(model.parameters())
+
+            from simple_nmt.mrt_trainer import MinimumRiskTrainer
+            mrt_trainer = MinimumRiskTrainer(config)
+
+            mrt_trainer.train(
+                model,
+                crit,
+                optimizer,
+                train_loader=loader.train_iter,
+                valid_loader=loader.valid_iter,
+                src_vocab=loader.src.vocab,
+                tgt_vocab=loader.tgt.vocab,
+                n_epochs=config.rl_n_epochs,
+            )
+
 
 if __name__ == '__main__':
     config = define_argparser()
