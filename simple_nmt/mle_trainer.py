@@ -87,7 +87,7 @@ class MaximumLikelihoodEstimationTrainer():
         RunningAverage(output_transform=lambda x: x[2]).attach(trainer, '|g_param|')
 
         if verbose >= VERBOSE_BATCH_WISE:
-            pbar = ProgressBar(bar_format=None)
+            pbar = ProgressBar(bar_format=None, ncols=120)
             pbar.attach(trainer, ['|param|', '|g_param|', 'loss'])
 
         if verbose >= VERBOSE_EPOCH_WISE:
@@ -108,7 +108,7 @@ class MaximumLikelihoodEstimationTrainer():
         RunningAverage(output_transform=lambda x: x).attach(evaluator, 'loss')
 
         if verbose >= VERBOSE_BATCH_WISE:
-            pbar = ProgressBar(bar_format=None)
+            pbar = ProgressBar(bar_format=None, ncols=120)
             pbar.attach(evaluator, ['loss'])
 
         if verbose >= VERBOSE_EPOCH_WISE:

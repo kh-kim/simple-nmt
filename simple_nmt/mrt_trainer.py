@@ -187,7 +187,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         RunningAverage(output_transform=lambda x: x[4]).attach(trainer, '|g_param|')
 
         if verbose >= VERBOSE_BATCH_WISE:
-            pbar = ProgressBar(bar_format=None)
+            pbar = ProgressBar(bar_format=None, ncols=120)
             pbar.attach(trainer, ['|param|', '|g_param|', 'actor', 'baseline', 'reward'])
 
         if verbose >= VERBOSE_EPOCH_WISE:
@@ -207,7 +207,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         RunningAverage(output_transform=lambda x: x).attach(evaluator, 'BLEU')
 
         if verbose >= VERBOSE_BATCH_WISE:
-            pbar = ProgressBar(bar_format=None)
+            pbar = ProgressBar(bar_format=None, ncols=120)
             pbar.attach(evaluator, ['BLEU'])
 
         if verbose >= VERBOSE_EPOCH_WISE:
