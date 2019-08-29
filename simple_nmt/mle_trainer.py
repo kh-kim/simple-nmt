@@ -19,7 +19,8 @@ class MaximumLikelihoodEstimationTrainer():
     def step(engine, mini_batch):
         from utils import get_grad_norm, get_parameter_norm
 
-        # You have to reset the gradients of all model parameters before to take another step in gradient descent.
+        # You have to reset the gradients of all model parameters
+        # before to take another step in gradient descent.
         engine.model.train()        
         engine.optimizer.zero_grad()
 
@@ -46,7 +47,10 @@ class MaximumLikelihoodEstimationTrainer():
         g_norm = float(get_grad_norm(engine.model.parameters()))
 
         # In orther to avoid gradient exploding, we apply gradient clipping.
-        torch_utils.clip_grad_norm_(engine.model.parameters(), 5.)
+        torch_utils.clip_grad_norm_(
+            engine.model.parameters(),
+            engine.config.max_grad_norm,
+        )
         # Take a step of gradient descent.
         engine.optimizer.step()
 
@@ -118,7 +122,6 @@ class MaximumLikelihoodEstimationTrainer():
                     np.exp(engine.best_loss),
                 ))
 
-
     @staticmethod
     def check_best(engine):
         from copy import deepcopy
@@ -126,7 +129,6 @@ class MaximumLikelihoodEstimationTrainer():
         loss = float(engine.state.metrics['loss'])
         if loss <= engine.best_loss:
             engine.best_loss = loss
-
 
     @staticmethod
     def save_model(engine, train_engine, config, src_vocab, tgt_vocab):
@@ -151,22 +153,21 @@ class MaximumLikelihoodEstimationTrainer():
         torch.save(
             {
                 'model': engine.model.state_dict(),
-                'opt': train_engine.optimizer,
+                'opt': train_engine.optimizer.state_dict(),
                 'config': config,
                 'src_vocab': src_vocab,
                 'tgt_vocab': tgt_vocab,
             }, model_fn
         )
 
-
-    def train(self, model, crit, train_loader, valid_loader, src_vocab, tgt_vocab):
-        optimizer = optim.Adam(model.parameters())
-
+    def train(self, model, crit, optimizer, train_loader, valid_loader, src_vocab, tgt_vocab, n_epochs):
         trainer = Engine(self.step)
+        trainer.config = self.config
         trainer.model, trainer.crit, trainer.optimizer = model, crit, optimizer
         trainer.epoch_idx = 0
 
         evaluator = Engine(self.validate)
+        evaluator.config = self.config
         evaluator.model, evaluator.crit = model, crit
         evaluator.best_loss = np.inf
 
@@ -194,6 +195,6 @@ class MaximumLikelihoodEstimationTrainer():
             tgt_vocab,
         )
 
-        trainer.run(train_loader, max_epochs=self.config.n_epochs)
+        trainer.run(train_loader, max_epochs=n_epochs)
 
         return model
