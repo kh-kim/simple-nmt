@@ -91,6 +91,12 @@ def define_argparser():
     )
 
     p.add_argument(
+        '--rl_lr',
+        type=float,
+        default=.01,
+        help='Learning rate for reinforcement learning. Default=.01'
+    )
+    p.add_argument(
         '--rl_n_samples',
         type=int,
         default=1,

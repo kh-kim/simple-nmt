@@ -98,6 +98,12 @@ def define_argparser():
     )
 
     p.add_argument(
+        '--rl_lr',
+        type=float,
+        default=.01,
+        help='Learning rate for reinforcement learning. Default=.01'
+    )
+    p.add_argument(
         '--rl_n_samples',
         type=int,
         default=1,
@@ -229,7 +235,7 @@ def main(config, model_weight=None, opt_weight=None):
         )
 
         if config.rl_n_epochs > 0:
-            optimizer = optim.Adam(model.parameters())
+            optimizer = optim.SGD(model.parameters(), lr=config.rl_lr)
 
             from simple_nmt.mrt_trainer import MinimumRiskTrainer
             mrt_trainer = MinimumRiskTrainer(config)
