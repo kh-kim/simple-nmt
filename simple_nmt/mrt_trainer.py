@@ -274,3 +274,4 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
                 'tgt_vocab': tgt_vocab,
             }, model_fn
         )
+
