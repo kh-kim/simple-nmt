@@ -58,18 +58,33 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
 
     @staticmethod
     def get_gradient(y_hat, y, crit, reward=1):
+        from torch.nn import functional as F
         # |y| = (batch_size, length)
         # |y_hat| = (batch_size, length, output_size)
         # |reward| = (batch_size)
+        batch_size = y.size(0)
 
         # Before we get the gradient, multiply -reward for each sample and each time-step.
         y_hat = y_hat * -reward.view(-1, 1, 1).expand(*y_hat.size())
 
-        # Again, multiply -1 because criterion is NLLLoss.
-        log_prob = -crit(y_hat.contiguous().view(-1, y_hat.size(-1)),
-                         y.contiguous().view(-1)
-                         )
-        log_prob.div(y.size(0)).backward()
+        # Generate one-hot to get log-probability.
+        y_hat = y_hat.view(-1, y_hat.size(-1))
+        y = F.one_hot(y.view(-1), num_classes=y_hat.size(-1)).float()
+        # |y| = |y_hat| = (batch_size * length, output_size)
+
+        log_prob = (y * y_hat).view(batch_size, -1)
+        # |log_prob| = (batch_size, length)
+        log_prob.sum().div(batch_size).backward()
+
+        # Like as below, you can also calculate log-probability of sample
+        # using Log-Likelihood Loss, which is -NLLLoss.
+        # By maximizing NLLLoss, log-probability would be minimized,
+        # and it also minimizes "risk", which is "-reward".
+        #
+        # log_prob = -crit(y_hat.contiguous().view(-1, y_hat.size(-1)),
+        #                  y.contiguous().view(-1)
+        #                  )
+        # log_prob.div(batch_size).backward()
 
         return log_prob
 
