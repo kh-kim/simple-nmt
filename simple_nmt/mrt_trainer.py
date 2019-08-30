@@ -59,10 +59,12 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
     @staticmethod
     def get_gradient(y_hat, y, crit, reward=1):
         from torch.nn import functional as F
+        import data_loader
         # |y| = (batch_size, length)
         # |y_hat| = (batch_size, length, output_size)
         # |reward| = (batch_size)
         batch_size = y.size(0)
+        output_size = y_hat.size(-1)
 
         # Before we get the gradient, multiply -reward for each sample and each time-step.
         y_hat = y_hat * -reward.view(-1, 1, 1).expand(*y_hat.size())
@@ -71,6 +73,11 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         y_hat = y_hat.view(-1, y_hat.size(-1))
         y = F.one_hot(y.view(-1), num_classes=y_hat.size(-1)).float()
         # |y| = |y_hat| = (batch_size * length, output_size)
+        
+        # Generate and apply loss weight to ignore the PAD.
+        loss_weight = torch.ones(output_size).to(y.device)
+        loss_weight[data_loader.PAD] = 0.
+        y = y * loss_weight.view(1, -1)
 
         log_prob = (y * y_hat).view(batch_size, -1)
         # |log_prob| = (batch_size, length)
