@@ -251,7 +251,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
 
     @staticmethod
     def save_model(engine, train_engine, config, src_vocab, tgt_vocab):
-        avg_train_bleu = engine.stste.metrics['actor']
+        avg_train_bleu = engine.state.metrics['actor']
         avg_valid_bleu = engine.state.metrics['BLEU']
 
         # Set a filename for model of last epoch.
