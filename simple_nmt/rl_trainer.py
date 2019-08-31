@@ -157,6 +157,7 @@ class MinimumRiskTrainer(Trainer):
             total_reward += float(final_reward.sum())
             total_actor_reward += float(actor_reward.sum())
             sample_cnt += int(actor_reward.size(0))
+            param_norm = float(utils.get_parameter_norm(self.model.parameters()))
             total_grad_norm += float(utils.get_grad_norm(self.model.parameters()))
 
             avg_reward = total_reward / sample_cnt
