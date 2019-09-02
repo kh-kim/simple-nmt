@@ -57,13 +57,13 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         return scores
 
     @staticmethod
-    def get_gradient(y_hat, y, crit, reward=1):
+    def get_gradient(y_hat, indice, crit, reward=1):
         from torch.nn import functional as F
         import data_loader
-        # |y| = (batch_size, length)
+        # |indice| = (batch_size, length)
         # |y_hat| = (batch_size, length, output_size)
         # |reward| = (batch_size)
-        batch_size = y.size(0)
+        batch_size = indice.size(0)
         output_size = y_hat.size(-1)
 
         # Before we get the gradient, multiply -reward for each sample and each time-step.
@@ -71,15 +71,15 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
 
         # Generate one-hot to get log-probability.
         y_hat = y_hat.view(-1, y_hat.size(-1))
-        y = F.one_hot(y.view(-1), num_classes=y_hat.size(-1)).float()
-        # |y| = |y_hat| = (batch_size * length, output_size)
+        indice = F.one_hot(indice.view(-1), num_classes=y_hat.size(-1)).float()
+        # |indice| = |y_hat| = (batch_size * length, output_size)
         
         # Generate and apply loss weight to ignore the PAD.
-        loss_weight = torch.ones(output_size).to(y.device)
+        loss_weight = torch.ones(output_size).to(indice.device)
         loss_weight[data_loader.PAD] = 0.
-        y = y * loss_weight.view(1, -1)
+        indice = indice * loss_weight.view(1, -1)
 
-        log_prob = (y * y_hat).view(batch_size, -1)
+        log_prob = (indice * y_hat).view(batch_size, -1)
         # |log_prob| = (batch_size, length)
         log_prob.sum().div(batch_size).backward()
 
@@ -89,7 +89,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         # and it also minimizes "risk", which is "-reward".
         #
         # log_prob = -crit(y_hat.contiguous().view(-1, y_hat.size(-1)),
-        #                  y.contiguous().view(-1)
+        #                  indice.contiguous().view(-1)
         #                  )
         # log_prob.div(batch_size).backward()
 
@@ -217,7 +217,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
             def print_train_logs(engine):
                 avg_p_norm = engine.state.metrics['|param|']
                 avg_g_norm = engine.state.metrics['|g_param|']
-                avg_reward = engine.state.metrics['reward']
+                avg_reward = engine.state.metrics['actor']
 
                 print('Epoch {} - |param|={:.2e} |g_param|={:.2e} BLEU={:.2f}'.format(
                     engine.state.epoch,
