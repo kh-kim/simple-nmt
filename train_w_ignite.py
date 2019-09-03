@@ -145,16 +145,6 @@ def define_argparser():
         default=1e-3,
         help='Lagrangian Multiplier for regularization term. Default=1e-3'
     )
-    p.add_argument(
-        '--dsl_retrain_lm',
-        action='store_true',
-        help='Retrain the language models whatever.'
-    )
-    p.add_argument(
-        '--dsl_continue_train_lm',
-        action='store_true',
-        help='Continue to train the language models watever.'
-    )
 
     config = p.parse_args()
 
