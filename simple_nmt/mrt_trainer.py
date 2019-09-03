@@ -258,7 +258,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         # We need to put every information to filename, as much as possible.
         model_fn = config.model_fn.split('.')
         
-        model_fn = model_fn[:-1] + ['%02d' % (train_engine.epoch_idx),
+        model_fn = model_fn[:-1] + ['%02d' % (train_engine.state.epoch),
                                     '%.2f-%.2f' % (avg_train_bleu, avg_valid_bleu),
                                     ] + [model_fn[-1]]
 

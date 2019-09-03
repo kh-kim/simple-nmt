@@ -109,10 +109,6 @@ class LanguageModelTrainer(MaximumLikelihoodEstimationTrainer):
 
         self.attach(trainer, evaluator, verbose=self.config.verbose)
 
-        @trainer.on(Events.EPOCH_COMPLETED)
-        def epoch_cnt(engine):
-            engine.epoch_idx += 1
-
         def run_validation(engine, evaluator, valid_loader):
             evaluator.run(valid_loader, max_epochs=1)
 

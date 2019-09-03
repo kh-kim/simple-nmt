@@ -55,7 +55,7 @@ class DualSupervisedTrainer():
             x_hat, y_hat,
             engine.crits,
             p_hat_x, p_hat_y,
-            lagrange=engine.config.dsl_lambda if engine.epoch_idx >= engine.config.n_epochs else .0
+            lagrange=engine.config.dsl_lambda if engine.state.epoch >= engine.config.n_epochs else .0
         )
 
         loss_x2y.div(y.size(0)).backward()
@@ -258,7 +258,7 @@ class DualSupervisedTrainer():
         # We need to put every information to filename, as much as possible.
         model_fn = config.model_fn.split('.')
         
-        model_fn = model_fn[:-1] + ['%02d' % (train_engine.epoch_idx),
+        model_fn = model_fn[:-1] + ['%02d' % (train_engine.state.epoch),
                                     '%.2f-%.2f' % (avg_train_x2y,
                                                    np.exp(avg_train_x2y)
                                                    ),
@@ -306,10 +306,6 @@ class DualSupervisedTrainer():
         evaluator.best_x2y, evaluator.best_y2x = np.inf, np.inf
 
         self.attach(trainer, evaluator, verbose=self.config.verbose)
-
-        @trainer.on(Events.EPOCH_COMPLETED)
-        def epoch_cnt(engine):
-            engine.epoch_idx += 1
 
         def run_validation(engine, evaluator, valid_loader):
             evaluator.run(valid_loader, max_epochs=1)
