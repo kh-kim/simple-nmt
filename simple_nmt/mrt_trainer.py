@@ -259,8 +259,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         model_fn = config.model_fn.split('.')
         
         model_fn = model_fn[:-1] + ['%02d' % (train_engine.epoch_idx),
-                                    '%.2f' % (avg_train_bleu),
-                                    '%.2f' % (avg_valid_bleu),
+                                    '%.2f-%.2f' % (avg_train_bleu, avg_valid_bleu),
                                     ] + [model_fn[-1]]
 
         model_fn = '.'.join(model_fn)
