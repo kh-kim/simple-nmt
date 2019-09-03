@@ -168,7 +168,105 @@ def main(config, model_weight=None, opt_weight=None):
                         )
 
     if config.dsl:
-        pass
+        from simple_nmt.lm_pretrainer import LanguageModelTrainer as LMTrainer
+
+        language_models = [
+            LanguageModel(
+                len(loader.tgt.vocab),
+                config.word_vec_size,
+                config.hidden_size,
+                n_layers=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+            LanguageModel(
+                len(loader.src.vocab),
+                config.word_vec_size,
+                config.hidden_size,
+                n_layers=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+        ]
+
+        models = [
+            Seq2Seq(
+                len(loader.src.vocab),
+                config.word_vec_size,
+                config.hidden_size,
+                len(loader.tgt.vocab),
+                n_layers=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+            Seq2Seq(
+                len(loader.tgt.vocab),
+                config.word_vec_size,
+                config.hidden_size,
+                len(loader.src.vocab),
+                n_layers=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+        ]
+
+        loss_weights = [
+            torch.ones(len(loader.tgt.vocab)),
+            torch.ones(len(loader.src.vocab)),
+        ]
+        loss_weights[0][data_loader.PAD] = .0
+        loss_weights[1][data_loader.PAD] = .0
+
+        crits = [
+            nn.NLLLoss(weight=loss_weights[0], reduction='none'),
+            nn.NLLLoss(weight=loss_weights[1], reduction='none'),
+        ]
+
+        print(language_models)
+        print(models)
+        print(crits)
+
+        if model_weight is not None:
+            for model, w in zip(models + language_models, model_weight):
+                model.load_state_dict(w)
+
+        if config.gpu_id >= 0:
+            for lm, seq2seq, crit in zip(language_models, models, crits):
+                lm.cuda(config.gpu_id)
+                seq2seq.cuda(config.gpu_id)
+                crit.cuda(config.gpu_id)
+
+        for lm, crit in zip(language_models, crits):
+            optimizer = optim.Adam(lm.parameters())
+            lm_trainer = LMTrainer(config)
+
+            lm_trainer.train(
+                lm, crit, optimizer,
+                train_loader=loader.train_iter,
+                valid_loader=loader.valid_iter,
+                src_vocab=loader.src.vocab if lm.vocab_size == len(loader.src.vocab) else None,
+                tgt_vocab=loader.tgt.vocab if lm.vocab_size == len(loader.tgt.vocab) else None,
+                n_epochs=config.lm_n_epochs,
+            )
+
+        from simple_nmt.dsl_trainer import DualSupervisedTrainer as DSLTrainer
+        dsl_trainer = DSLTrainer(config)
+
+        optimizers = [
+            optim.Adam(models[0].parameters()),
+            optim.Adam(models[1].parameters()),
+        ]
+
+        if opt_weight is not None:
+            for opt, w in zip(optimizers, opt_weight):
+                opt.load_state_dict(w)
+
+        dsl_trainer.train(
+            models,
+            language_models,
+            crits,
+            optimizers,
+            train_loader=loader.train_iter,
+            valid_loader=loader.valid_iter,
+            vocabs=[loader.src.vocab, loader.tgt.vocab],
+            n_epochs=config.n_epochs + config.dsl_n_epochs,
+        )
     else:
         from simple_nmt.mle_trainer import MaximumLikelihoodEstimationTrainer as MLETrainer
         # Encoder's embedding layer input size
