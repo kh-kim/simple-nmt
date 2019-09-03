@@ -68,7 +68,7 @@ if __name__ == '__main__':
         config = overwrite_config(config, prev_config)
 
         model_weight = saved_data['model']
-        opt_weight = saved_data['opt'].state_dict()
+        opt_weight = saved_data['opt']
 
         from train_w_ignite import main
         main(config, model_weight=model_weight, opt_weight=opt_weight)
