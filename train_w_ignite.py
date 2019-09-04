@@ -134,6 +134,12 @@ def define_argparser():
         help='Number of epochs for language model training. Default=5'
     )
     p.add_argument(
+        '--lm_batch_size',
+        type=int,
+        default=512,
+        help='Batch size for language model training. Default=512',
+    )
+    p.add_argument(
         '--dsl_n_epochs',
         type=int,
         default=10,
@@ -157,17 +163,17 @@ def main(config, model_weight=None, opt_weight=None):
         pp.pprint(vars(config))
     print_config(config)
 
-    # Load training and validation data set.
-    loader = DataLoader(config.train,
-                        config.valid,
-                        (config.lang[:2], config.lang[-2:]),
-                        batch_size=config.batch_size,
-                        device=config.gpu_id,
-                        max_length=config.max_length,
-                        dsl=config.dsl
-                        )
-
     if config.dsl:
+        loader = DataLoader(
+            config.train,
+            config.valid,
+            (config.lang[:2], config.lang[-2:]),
+            batch_size=config.lm_batch_size,
+            device=config.gpu_id,
+            max_length=config.max_length,
+            dsl=config.dsl,
+        )
+
         from simple_nmt.lm_pretrainer import LanguageModelTrainer as LMTrainer
 
         language_models = [
@@ -245,6 +251,16 @@ def main(config, model_weight=None, opt_weight=None):
                 n_epochs=config.lm_n_epochs,
             )
 
+        loader = DataLoader(
+            config.train,
+            config.valid,
+            (config.lang[:2], config.lang[-2:]),
+            batch_size=config.batch_size,
+            device=config.gpu_id,
+            max_length=config.max_length,
+            dsl=config.dsl
+        )
+
         from simple_nmt.dsl_trainer import DualSupervisedTrainer as DSLTrainer
         dsl_trainer = DSLTrainer(config)
 
@@ -268,6 +284,16 @@ def main(config, model_weight=None, opt_weight=None):
             n_epochs=config.n_epochs + config.dsl_n_epochs,
         )
     else:
+        loader = DataLoader(
+            config.train,
+            config.valid,
+            (config.lang[:2], config.lang[-2:]),
+            batch_size=config.batch_size,
+            device=config.gpu_id,
+            max_length=config.max_length,
+            dsl=config.dsl
+        )
+
         from simple_nmt.mle_trainer import MaximumLikelihoodEstimationTrainer as MLETrainer
         # Encoder's embedding layer input size
         input_size = len(loader.src.vocab)
