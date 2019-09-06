@@ -11,7 +11,7 @@ VERBOSE_EPOCH_WISE = 1
 VERBOSE_BATCH_WISE = 2
 
 
-from simple_nmt.mle_trainer import MaximumLikelihoodEstimationTrainer
+from simple_nmt.trainer import MaximumLikelihoodEstimationTrainer
 
 
 class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):

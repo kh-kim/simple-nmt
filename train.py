@@ -174,7 +174,7 @@ def main(config, model_weight=None, opt_weight=None):
             dsl=config.dsl,
         )
 
-        from simple_nmt.lm_pretrainer import LanguageModelTrainer as LMTrainer
+        from simple_nmt.lm_trainer import LanguageModelTrainer as LMTrainer
 
         language_models = [
             LanguageModel(
@@ -261,7 +261,7 @@ def main(config, model_weight=None, opt_weight=None):
             dsl=config.dsl
         )
 
-        from simple_nmt.dsl_trainer import DualSupervisedTrainer as DSLTrainer
+        from simple_nmt.dual_trainer import DualSupervisedTrainer as DSLTrainer
         dsl_trainer = DSLTrainer(config)
 
         optimizers = [
@@ -294,7 +294,7 @@ def main(config, model_weight=None, opt_weight=None):
             dsl=config.dsl
         )
 
-        from simple_nmt.mle_trainer import MaximumLikelihoodEstimationTrainer as MLETrainer
+        from simple_nmt.trainer import MaximumLikelihoodEstimationTrainer as MLETrainer
         # Encoder's embedding layer input size
         input_size = len(loader.src.vocab)
         # Decoder's embedding layer input size and Generator's softmax layer output size
@@ -351,7 +351,7 @@ def main(config, model_weight=None, opt_weight=None):
         if config.rl_n_epochs > 0:
             optimizer = optim.SGD(model.parameters(), lr=config.rl_lr)
 
-            from simple_nmt.mrt_trainer import MinimumRiskTrainer
+            from simple_nmt.rl_trainer import MinimumRiskTrainer
             mrt_trainer = MinimumRiskTrainer(config)
 
             mrt_trainer.train(
