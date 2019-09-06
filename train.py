@@ -1,7 +1,7 @@
 import argparse
-import sys
 
 import torch
+from torch import optim
 import torch.nn as nn
 
 from data_loader import DataLoader
@@ -9,11 +9,6 @@ import data_loader
 
 from simple_nmt.seq2seq import Seq2Seq
 from simple_nmt.rnnlm import LanguageModel
-
-from simple_nmt.trainer import Trainer
-from simple_nmt.rl_trainer import MinimumRiskTrainer
-from simple_nmt.dual_trainer import DualTrainer
-from simple_nmt.lm_trainer import LanguageModelTrainer
 
 
 def define_argparser():
@@ -55,7 +50,7 @@ def define_argparser():
     p.add_argument(
         '--n_epochs',
         type=int,
-        default=18,
+        default=15,
         help='Number of epochs to train. Default=18'
     )
     p.add_argument(
@@ -63,12 +58,6 @@ def define_argparser():
         type=int,
         default=2,
         help='VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2'
-    )
-    p.add_argument(
-        '--early_stop',
-        type=int,
-        default=-1,
-        help='The training will be stopped if there is no improvement this number of epochs. Default=-1'
     )
 
     p.add_argument(
@@ -86,13 +75,13 @@ def define_argparser():
     p.add_argument(
         '--word_vec_size',
         type=int,
-        default=256,
+        default=512,
         help='Word embedding vector dimension. Default=512'
     )
     p.add_argument(
         '--hidden_size',
         type=int,
-        default=512,
+        default=768,
         help='Hidden size of LSTM. Default=768'
     )
     p.add_argument(
@@ -101,52 +90,11 @@ def define_argparser():
         default=4,
         help='Number of layers in LSTM. Default=4'
     )
-
     p.add_argument(
         '--max_grad_norm',
         type=float,
         default=5.,
         help='Threshold for gradient clipping. Default=5.0'
-    )
-    p.add_argument(
-        '--adam',
-        action='store_true',
-        help='Use Adam instead of using SGD.'
-    )
-    p.add_argument(
-        '--lr',
-        type=float,
-        default=1.,
-        help='Initial learning rate. Default=1.0'
-    )
-    p.add_argument(
-        '--min_lr',
-        type=float,
-        default=.000001,
-        help='Minimum learning rate. Default=.000001'
-    )
-    p.add_argument(
-        '--lr_decay_start_at',
-        type=int,
-        default=10,
-        help='Start learning rate decay from this epoch.'
-    )
-    p.add_argument(
-        '--lr_slow_decay',
-        action='store_true',
-        help='Decay learning rate only if there is no improvement on last epoch.'
-    )
-    p.add_argument(
-        '--lr_decay_rate',
-        type=float,
-        default=.5,
-        help='Learning rate decay rate. Default=0.5'
-    )
-    p.add_argument(
-        '--train_ratio_per_epoch',
-        type=float,
-        default=1.,
-        help='Ratio of using train-set in one training epoch. Default=1.'
     )
 
     p.add_argument(
@@ -186,6 +134,12 @@ def define_argparser():
         help='Number of epochs for language model training. Default=5'
     )
     p.add_argument(
+        '--lm_batch_size',
+        type=int,
+        default=512,
+        help='Batch size for language model training. Default=512',
+    )
+    p.add_argument(
         '--dsl_n_epochs',
         type=int,
         default=10,
@@ -197,169 +151,150 @@ def define_argparser():
         default=1e-3,
         help='Lagrangian Multiplier for regularization term. Default=1e-3'
     )
-    p.add_argument(
-        '--dsl_retrain_lm',
-        action='store_true',
-        help='Retrain the language models whatever.'
-    )
-    p.add_argument(
-        '--dsl_continue_train_lm',
-        action='store_true',
-        help='Continue to train the language models watever.'
-    )
 
     config = p.parse_args()
 
     return config
 
-
-def overwrite_config(config, prev_config):
-    # This method provides a compatibility for new or missing arguments.
-    for key in vars(prev_config).keys():
-        if '--%s' % key not in sys.argv or key == 'model':
-            if vars(config).get(key) is not None:
-                vars(config)[key] = vars(prev_config)[key]
-            else:
-                # Missing argument
-                print('WARNING!!! Argument "-%s" is not found in current argument parser.\tSaved value:' % key, vars(prev_config)[key])
-        else:
-            # Argument value is change from saved model.
-            print('WARNING!!! Argument "-%s" is not loaded from saved model.\tCurrent value:' % key, vars(config)[key])
-
-    return config
-
-
-if __name__ == "__main__":
-    config = define_argparser()
-
-    import os.path
-    # If the model exists, load model and configuration to continue the training.
-    if os.path.isfile(config.model_fn):
-        saved_data = torch.load(config.model_fn, map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id)
-
-        prev_config = saved_data['config']
-        config = overwrite_config(config, prev_config)
-        config.lr = saved_data['current_lr'] if saved_data.get('current_lr') is not None else config.lr
-    else:
-        saved_data = None
-
-    def _print_config(config):
+def main(config, model_weight=None, opt_weight=None):
+    def print_config(config):
         import pprint
         pp = pprint.PrettyPrinter(indent=4)
         pp.pprint(vars(config))
-    _print_config(config)
+    print_config(config)
 
-    # Load training and validation data set.
-    loader = DataLoader(config.train,
-                        config.valid,
-                        (config.lang[:2], config.lang[-2:]),
-                        batch_size=config.batch_size,
-                        device=config.gpu_id,
-                        max_length=config.max_length,
-                        dsl=config.dsl
-                        )
+    if config.dsl:
+        loader = DataLoader(
+            config.train,
+            config.valid,
+            (config.lang[:2], config.lang[-2:]),
+            batch_size=config.lm_batch_size,
+            device=config.gpu_id,
+            max_length=config.max_length,
+            dsl=config.dsl,
+        )
 
-    if config.dsl: # In case of the dual supervised training mode is turn-on.
-        # Because we must train both models in same time, we need to declare both models.
-        models = [Seq2Seq(len(loader.src.vocab),
-                          config.word_vec_size,
-                          config.hidden_size,
-                          len(loader.tgt.vocab),
-                          n_layers=config.n_layers,
-                          dropout_p=config.dropout
-                          ),
-                  Seq2Seq(len(loader.tgt.vocab),
-                          config.word_vec_size,
-                          config.hidden_size,
-                          len(loader.src.vocab),
-                          n_layers=config.n_layers,
-                          dropout_p=config.dropout
-                          )
-                  ]
-        # Because we also need to get P(src) and P(tgt), we need language models consist of LSTM.
-        language_models = [LanguageModel(len(loader.tgt.vocab),
-                                         config.word_vec_size,
-                                         config.hidden_size,
-                                         n_layers=config.n_layers,
-                                         dropout_p=config.dropout
-                                         ),
-                           LanguageModel(len(loader.src.vocab),
-                                         config.word_vec_size,
-                                         config.hidden_size,
-                                         n_layers=config.n_layers,
-                                         dropout_p=config.dropout
-                                         )
-                           ]
-        loss_weights = [torch.ones(len(loader.tgt.vocab)),
-                        torch.ones(len(loader.src.vocab))
-                        ]
+        from simple_nmt.lm_pretrainer import LanguageModelTrainer as LMTrainer
 
+        language_models = [
+            LanguageModel(
+                len(loader.tgt.vocab),
+                config.word_vec_size,
+                config.hidden_size,
+                n_layers=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+            LanguageModel(
+                len(loader.src.vocab),
+                config.word_vec_size,
+                config.hidden_size,
+                n_layers=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+        ]
+
+        models = [
+            Seq2Seq(
+                len(loader.src.vocab),
+                config.word_vec_size,
+                config.hidden_size,
+                len(loader.tgt.vocab),
+                n_layers=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+            Seq2Seq(
+                len(loader.tgt.vocab),
+                config.word_vec_size,
+                config.hidden_size,
+                len(loader.src.vocab),
+                n_layers=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+        ]
+
+        loss_weights = [
+            torch.ones(len(loader.tgt.vocab)),
+            torch.ones(len(loader.src.vocab)),
+        ]
         loss_weights[0][data_loader.PAD] = .0
         loss_weights[1][data_loader.PAD] = .0
-        # Both loss weights have bais about PAD index.
 
-        # Because language model and translation model have same output size, 
-        # (if the output language is the same)
-        # we can use same loss function for each direction.
-        crits = [nn.NLLLoss(weight=loss_weights[0],
-                            reduction='none'
-                            ),
-                 nn.NLLLoss(weight=loss_weights[1],
-                            reduction='none'
-                            )
-                 ]
+        crits = [
+            nn.NLLLoss(weight=loss_weights[0], reduction='none'),
+            nn.NLLLoss(weight=loss_weights[1], reduction='none'),
+        ]
 
-        print(models)
         print(language_models)
+        print(models)
         print(crits)
 
+        if model_weight is not None:
+            for model, w in zip(models + language_models, model_weight):
+                model.load_state_dict(w)
+
         if config.gpu_id >= 0:
-            for model, language_model, crit in zip(models, language_models, crits):
-                model.cuda(config.gpu_id)
-                language_model.cuda(config.gpu_id)
+            for lm, seq2seq, crit in zip(language_models, models, crits):
+                lm.cuda(config.gpu_id)
+                seq2seq.cuda(config.gpu_id)
                 crit.cuda(config.gpu_id)
 
-        if saved_data is None or config.dsl_retrain_lm is True or config.dsl_continue_train_lm is True:
-            # In case of resuming the language model training
-            if saved_data is not None and config.dsl_continue_train_lm is True:
-                for lm, lm_weight in zip(language_models, saved_data['lms']):
-                    lm.load_state_dict(lm_weight)
+        for lm, crit in zip(language_models, crits):
+            optimizer = optim.Adam(lm.parameters())
+            lm_trainer = LMTrainer(config)
 
-            # Start to train the language models for --lm_n_epochs
-            for language_model, crit, is_src in zip(language_models, crits, [False, True]):
-                lm_trainer = LanguageModelTrainer(language_model,
-                                                  crit,
-                                                  config=config,
-                                                  is_src=is_src
-                                                  )
-                lm_trainer.train(loader.train_iter,
-                                 loader.valid_iter,
-                                 verbose=config.verbose
-                                 )
+            lm_trainer.train(
+                lm, crit, optimizer,
+                train_loader=loader.train_iter,
+                valid_loader=loader.valid_iter,
+                src_vocab=loader.src.vocab if lm.vocab_size == len(loader.src.vocab) else None,
+                tgt_vocab=loader.tgt.vocab if lm.vocab_size == len(loader.tgt.vocab) else None,
+                n_epochs=config.lm_n_epochs,
+            )
 
-                language_model.load_state_dict(lm_trainer.best['model']) # Pick the best one.
-                print('A language model from best epoch %d is loaded.' % lm_trainer.best['epoch'])
+        loader = DataLoader(
+            config.train,
+            config.valid,
+            (config.lang[:2], config.lang[-2:]),
+            batch_size=config.batch_size,
+            device=config.gpu_id,
+            max_length=config.max_length,
+            dsl=config.dsl
+        )
 
-            if saved_data is not None:
-                saved_data['lms'] = [lm.state_dict() for lm in language_models]
-        else:
-            print('Skip the langauge model training.')
+        from simple_nmt.dsl_trainer import DualSupervisedTrainer as DSLTrainer
+        dsl_trainer = DSLTrainer(config)
 
-        # Start dual supervised learning
-        trainer = DualTrainer(models,
-                              crits,
-                              language_models,
-                              config=config,
-                              src_vocab=loader.src.vocab,
-                              tgt_vocab=loader.tgt.vocab
-                              )
-        
-        if saved_data is not None:
-            trainer.best = saved_data
-            trainer.get_best_model()
+        optimizers = [
+            optim.Adam(models[0].parameters()),
+            optim.Adam(models[1].parameters()),
+        ]
 
-        trainer.train(loader.train_iter, loader.valid_iter, verbose=config.verbose)
+        if opt_weight is not None:
+            for opt, w in zip(optimizers, opt_weight):
+                opt.load_state_dict(w)
+
+        dsl_trainer.train(
+            models,
+            language_models,
+            crits,
+            optimizers,
+            train_loader=loader.train_iter,
+            valid_loader=loader.valid_iter,
+            vocabs=[loader.src.vocab, loader.tgt.vocab],
+            n_epochs=config.n_epochs + config.dsl_n_epochs,
+        )
     else:
+        loader = DataLoader(
+            config.train,
+            config.valid,
+            (config.lang[:2], config.lang[-2:]),
+            batch_size=config.batch_size,
+            device=config.gpu_id,
+            max_length=config.max_length,
+            dsl=config.dsl
+        )
+
+        from simple_nmt.mle_trainer import MaximumLikelihoodEstimationTrainer as MLETrainer
         # Encoder's embedding layer input size
         input_size = len(loader.src.vocab)
         # Decoder's embedding layer input size and Generator's softmax layer output size
@@ -373,6 +308,8 @@ if __name__ == "__main__":
                         dropout_p=config.dropout  # dropout-rate in LSTM
                         )
 
+        
+
         # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
         # Thus, set a weight for PAD to zero.
         loss_weight = torch.ones(output_size)
@@ -385,41 +322,50 @@ if __name__ == "__main__":
         print(model)
         print(crit)
 
+        if model_weight is not None:
+            model.load_state_dict(model_weight)
+
         # Pass models to GPU device if it is necessary.
         if config.gpu_id >= 0:
             model.cuda(config.gpu_id)
             crit.cuda(config.gpu_id)
 
+        optimizer = optim.Adam(model.parameters())     
+        if opt_weight is not None:
+            optimizer.load_state_dict(opt_weight)        
+        print(optimizer)
+
         # Start training. This function maybe equivalant to 'fit' function in Keras.
-        trainer = Trainer(model,
-                          crit,
-                          config=config,
-                          src_vocab=loader.src.vocab,
-                          tgt_vocab=loader.tgt.vocab
-                          )
-        # If we have loaded model weight parameters, use that weights for declared model.
-        if saved_data is not None:
-            trainer.best = saved_data
-            trainer.get_best_model()
+        mle_trainer = MLETrainer(config)
+        mle_trainer.train(
+            model,
+            crit,
+            optimizer,
+            train_loader=loader.train_iter,
+            valid_loader=loader.valid_iter,
+            src_vocab=loader.src.vocab,
+            tgt_vocab=loader.tgt.vocab,
+            n_epochs=config.n_epochs,
+        )
 
-        trainer.train(loader.train_iter, loader.valid_iter, verbose=config.verbose)
-
-        # Start reinforcement learning.
         if config.rl_n_epochs > 0:
-            rl_trainer = MinimumRiskTrainer(model,
-                                            crit,
-                                            config=config,
-                                            src_vocab=loader.src.vocab,
-                                            tgt_vocab=loader.tgt.vocab,
-                                            )
+            optimizer = optim.SGD(model.parameters(), lr=config.rl_lr)
 
-            if saved_data is not None:
-                rl_trainer.best = saved_data
-                if rl_trainer.best['epoch'] == config.n_epochs:
-                    rl_trainer.best['current_lr'] = config.rl_lr
-                rl_trainer.get_best_model()
+            from simple_nmt.mrt_trainer import MinimumRiskTrainer
+            mrt_trainer = MinimumRiskTrainer(config)
 
-            rl_trainer.train(loader.train_iter,
-                            loader.valid_iter,
-                            verbose=config.verbose
-                            )
+            mrt_trainer.train(
+                model,
+                crit,
+                optimizer,
+                train_loader=loader.train_iter,
+                valid_loader=loader.valid_iter,
+                src_vocab=loader.src.vocab,
+                tgt_vocab=loader.tgt.vocab,
+                n_epochs=config.rl_n_epochs,
+            )
+
+
+if __name__ == '__main__':
+    config = define_argparser()
+    main(config)
