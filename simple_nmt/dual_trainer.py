@@ -127,7 +127,7 @@ class DualSupervisedTrainer():
         # |x_hat| = (batch_size, n, x_vocab_size)
 
         with torch.no_grad():
-            p_hat_x = engine.language_models[Y2X](x)
+            p_hat_x = engine.language_models[Y2X](x).index_select(dim=0, index=restore_indice)
             # |p_hat_x| = |x_hat|
 
         x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
