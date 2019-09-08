@@ -8,6 +8,7 @@ from data_loader import DataLoader
 import data_loader
 
 from simple_nmt.seq2seq import Seq2Seq
+from simple_nmt.transformer import Transformer
 from simple_nmt.rnnlm import LanguageModel
 
 
@@ -150,6 +151,12 @@ def define_argparser():
         type=float,
         default=1e-3,
         help='Lagrangian Multiplier for regularization term. Default=1e-3'
+    )
+
+    p.add_argument(
+        '--use_transformer',
+        action='store_true',
+        help='',
     )
 
     config = p.parse_args()
@@ -300,15 +307,23 @@ def main(config, model_weight=None, opt_weight=None):
         # Decoder's embedding layer input size and Generator's softmax layer output size
         output_size = len(loader.tgt.vocab)
         # Declare the model
-        model = Seq2Seq(input_size,
-                        config.word_vec_size,  # Word embedding vector size
-                        config.hidden_size,  # LSTM's hidden vector size
-                        output_size,
-                        n_layers=config.n_layers,  # number of layers in LSTM
-                        dropout_p=config.dropout  # dropout-rate in LSTM
-                        )
-
-        
+        if config.use_transformer:
+            model = Transformer(
+                input_size,
+                config.hidden_size,
+                output_size,
+                n_splits=8,
+                n_enc_blocks=config.n_layers,
+                n_dec_blocks=config.n_layers,
+            )
+        else:
+            model = Seq2Seq(input_size,
+                            config.word_vec_size,  # Word embedding vector size
+                            config.hidden_size,  # LSTM's hidden vector size
+                            output_size,
+                            n_layers=config.n_layers,  # number of layers in LSTM
+                            dropout_p=config.dropout  # dropout-rate in LSTM
+                            )
 
         # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
         # Thus, set a weight for PAD to zero.
@@ -330,7 +345,10 @@ def main(config, model_weight=None, opt_weight=None):
             model.cuda(config.gpu_id)
             crit.cuda(config.gpu_id)
 
-        optimizer = optim.Adam(model.parameters())     
+        if config.use_transformer:
+            optimizer = optim.Adam(model.parameters(), betas=(.9, .98))
+        else:
+            optimizer = optim.Adam(model.parameters())
         if opt_weight is not None:
             optimizer.load_state_dict(opt_weight)        
         print(optimizer)
