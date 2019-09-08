@@ -122,13 +122,13 @@ class DecoderBlock(nn.Module):
         self.fc_norm = nn.LayerNorm(hidden_size)
 
     def forward(self, x, KV, mask, prev):
-        if prev is not None: # prev should be list.
+        if prev is not None:
             # |x| = (batch_size, m=1, hidden_size)
             # |prev_i| = (batch_size, m', hidden_size)
 
             z = self.masked_attn_norm(x + self.masked_attn(x,
-                                                           prev[0],
-                                                           prev[0],
+                                                           prev,
+                                                           prev,
                                                            mask=None,
                                                            ))
             # |z| = (batch_size, 1, hidden_size)
@@ -155,7 +155,7 @@ class DecoderBlock(nn.Module):
             z,
             KV,
             mask,
-            prev[1:] if prev is not None else None,
+            prev,
         )
 
 
@@ -254,8 +254,13 @@ class Transformer(nn.Module):
         # |mask| = (batch_size, n) 
         x = x[0]
 
+        mask_enc = torch.stack([mask for _ in range(x.size(1))], dim=1)
+        mask_dec = mask.unsqueeze(1)
+        # |mask_enc| = (batch_size, n, n)
+        # |mask_dec| = (batch_size, 1, n)
+
         z = self.emb_enc(x)
-        z, _ = self.encoder(z, mask)
+        z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
         # Fill a vector, which has 'batch_size' dimension, with BOS value.
@@ -263,8 +268,43 @@ class Transformer(nn.Module):
         # |y_t_1| = (batch_size, 1)
         is_undone = x.new_ones(batch_size, 1).float()
 
+        prevs, y_hats, indice = [[] for _ in range(len(self.decoder._modules))], [], []
+
         # Repeat a loop while sum of 'is_undone' flag is bigger than 0, or current time-step is smaller than maximum length.
         while is_undone.sum() > 0 and len(indice) < max_length:
             # Unlike training procedure, take the last time-step's output during the inference.
             h_t = self.emb_dec(y_t_1)
-            # |h_t| = (batch_size, 1, word_vec_dim)
+            # |h_t| = (batch_size, 1, hidden_size))
+            prevs[0] += [h_t]
+
+            for i, block in enumerate(self.decoder._modules.values()):
+                prev = torch.cat(prevs[i], dim=1)
+                # |prev| = (batch_size, m, hidden_size)
+
+                h_t, _, _, _ = block(h_t, z, mask_dec, prev)
+                # |h_t| = (batch_size, 1, hidden_size)
+
+                prevs[i + 1] += [h_t]
+
+            y_hat_t = self.softmax(self.generator(h_t))
+            # |y_hat_t| = (batch_size, 1, output_size)
+
+            y_hats += [y_hat_t]
+            if is_greedy:
+                y_t_1 = torch.topk(y_hat_t, 1, dim=-1)[1].squeeze(-1)
+            else:
+                # Take a random sampling based on the multinoulli distribution.
+                y_t_1 = torch.multinomial(y_hat_t.exp().view(x.size(0), -1), 1)
+            # Put PAD if the sample is done.
+            y_t_1 = y_t_1.masked_fill_((1. - is_undone).byte(), data_loader.PAD)
+            is_undone = is_undone * torch.ne(y_t_1, data_loader.EOS).float()
+            # |y| = (batch_size, 1)
+            # |is_undone| = (batch_size, 1)
+            indice += [y_t_1]
+
+        y_hats = torch.cat(y_hats, dim=1)
+        indice = torch.cat(indice, dim=-1)
+        # |y_hats| = (batch_size, m, output_size)
+        # |indice| = (batch_size, m)
+
+        return y_hats, indice
