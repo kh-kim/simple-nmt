@@ -158,6 +158,12 @@ def define_argparser():
         action='store_true',
         help='',
     )
+    p.add_argument(
+        '--n_splits',
+        type=int,
+        default=16,
+        help='',
+    )
 
     config = p.parse_args()
 
@@ -312,9 +318,10 @@ def main(config, model_weight=None, opt_weight=None):
                 input_size,
                 config.hidden_size,
                 output_size,
-                n_splits=8,
+                n_splits=config.n_splits,
                 n_enc_blocks=config.n_layers,
                 n_dec_blocks=config.n_layers,
+                dropout_p=config.dropout,
             )
         else:
             model = Seq2Seq(input_size,
