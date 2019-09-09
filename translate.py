@@ -8,6 +8,7 @@ import torch
 from data_loader import DataLoader
 import data_loader
 from simple_nmt.seq2seq import Seq2Seq
+from simple_nmt.transformer import Transformer
 
 
 def define_argparser():
@@ -126,13 +127,24 @@ if __name__ == '__main__':
     output_size = len(loader.tgt.vocab)
 
     # Declare sequence-to-sequence model.
-    model = Seq2Seq(input_size,
-                    train_config.word_vec_size,
-                    train_config.hidden_size,
-                    output_size,
-                    n_layers=train_config.n_layers,
-                    dropout_p=train_config.dropout
-                    )
+    if train_config.use_transformer:
+        model = Transformer(
+            input_size,
+            train_config.hidden_size,
+            output_size,
+            n_splits=train_config.n_splits,
+            n_enc_blocks=train_config.n_layers,
+            n_dec_blocks=train_config.n_layers,
+            dropout_p=train_config.dropout,
+        )
+    else:
+        model = Seq2Seq(input_size,
+                        train_config.word_vec_size,
+                        train_config.hidden_size,
+                        output_size,
+                        n_layers=train_config.n_layers,
+                        dropout_p=train_config.dropout
+                        )
 
     if train_config.dsl:
         if not is_reverse:
