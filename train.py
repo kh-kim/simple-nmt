@@ -353,7 +353,7 @@ def main(config, model_weight=None, opt_weight=None):
             crit.cuda(config.gpu_id)
 
         if config.use_transformer:
-            optimizer = optim.Adam(model.parameters(), betas=(.9, .98))
+            optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(.9, .98))
         else:
             optimizer = optim.Adam(model.parameters())
         if opt_weight is not None:
