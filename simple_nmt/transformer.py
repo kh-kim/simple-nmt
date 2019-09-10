@@ -278,22 +278,28 @@ class Transformer(nn.Module):
         # |y_t_1| = (batch_size, 1)
         is_undone = x.new_ones(batch_size, 1).float()
 
-        prevs, y_hats, indice = [[] for _ in range(len(self.decoder._modules) + 1)], [], []
+        prevs, y_hats, indice = [None for _ in range(len(self.decoder._modules) + 1)], [], []
         # Repeat a loop while sum of 'is_undone' flag is bigger than 0, or current time-step is smaller than maximum length.
         while is_undone.sum() > 0 and len(indice) < max_length:
             # Unlike training procedure, take the last time-step's output during the inference.
             h_t = self.emb_dec(y_t_1)
             # |h_t| = (batch_size, 1, hidden_size))
-            prevs[0] += [h_t]
+            if prevs[0] is None:
+                prevs[0] = h_t
+            else:
+                prevs[0] = torch.cat([prevs[0], h_t], dim=1)
 
             for i, block in enumerate(self.decoder._modules.values()):
-                prev = torch.cat(prevs[i], dim=1)
+                prev = prevs[i]
                 # |prev| = (batch_size, m, hidden_size)
 
                 h_t, _, _, _ = block(h_t, z, mask_dec, prev)
                 # |h_t| = (batch_size, 1, hidden_size)
 
-                prevs[i + 1] += [h_t]
+                if prevs[i + 1] is None:
+                    prevs[i + 1] = h_t
+                else:
+                    prevs[i + 1] = torch.cat([prevs[i + 1], h_t], dim=1)
 
             y_hat_t = self.softmax(self.generator(h_t))
             # |y_hat_t| = (batch_size, 1, output_size)
