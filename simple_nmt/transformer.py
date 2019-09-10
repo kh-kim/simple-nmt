@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 import data_loader
-from simple_nmt.new_search import SingleBeamSearchSpace
+from simple_nmt.search import SingleBeamSearchSpace
 
 
 class Attention(nn.Module):
