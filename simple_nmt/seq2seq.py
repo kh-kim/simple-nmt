@@ -388,13 +388,16 @@ class Seq2Seq(nn.Module):
         h_0_tgt = (h_0_tgt, c_0_tgt)
 
         # initialize 'SingleBeamSearchSpace' as many as batch_size
-        spaces = [SingleBeamSearchSpace((h_0_tgt[0][:, i, :].unsqueeze(1),
-                                         h_0_tgt[1][:, i, :].unsqueeze(1)
-                                         ),
-                                        None,
-                                        beam_size,
-                                        max_length=max_length
-                                        ) for i in range(batch_size)]
+        spaces = [SingleBeamSearchSpace(
+            h_src.device,
+            [
+                ('hidden_state', h_0_tgt[0][:, i, :].unsqueeze(1), 1),
+                ('cell_state', h_0_tgt[1][:, i, :].unsqueeze(1), 1),
+                ('h_t_1_tilde', None, 0),
+            ],
+            beam_size=beam_size,
+            max_length=max_length,
+        ) for i in range(batch_size)]
         done_cnt = [space.is_done() for space in spaces]
 
         length = 0
@@ -412,7 +415,7 @@ class Seq2Seq(nn.Module):
             # This may cause a bottle-neck.
             for i, space in enumerate(spaces):
                 if space.is_done() == 0:  # Batchfy only if the inference for the sample is still not finished.
-                    y_hat_, (hidden_, cell_), h_t_tilde_ = space.get_batch()
+                    y_hat_, hidden_, cell_, h_t_tilde_ = space.get_batch()
 
                     fab_input += [y_hat_]
                     fab_hidden += [hidden_]
@@ -466,12 +469,14 @@ class Seq2Seq(nn.Module):
                     to_index = from_index + beam_size
 
                     # pick k-best results for each sample.
-                    space.collect_result(y_hat[from_index:to_index],
-                                         (fab_hidden[:, from_index:to_index, :],
-                                          fab_cell[:, from_index:to_index, :]
-                                          ),
-                                         fab_h_t_tilde[from_index:to_index]
-                                         )
+                    space.collect_result(
+                        y_hat[from_index:to_index],
+                        [
+                            ('hidden_state', fab_hidden[:, from_index:to_index, :]),
+                            ('cell_state', fab_cell[:, from_index:to_index, :]),
+                            ('h_t_1_tilde', fab_h_t_tilde[from_index:to_index]),
+                        ],
+                    )
                     cnt += 1
 
             done_cnt = [space.is_done() for space in spaces]
