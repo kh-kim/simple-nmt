@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 import data_loader
+from simple_nmt.new_search import SingleBeamSearchSpace
 
 
 class Attention(nn.Module):
@@ -323,3 +324,117 @@ class Transformer(nn.Module):
         # |indice| = (batch_size, m)
 
         return y_hats, indice
+
+    def batch_beam_search(self, x, beam_size=5, max_length=255, n_best=1):
+        # |x[0]| = (batch_size, n)
+        batch_size = x[0].size(0)
+
+        mask = self._generate_mask(x[0], x[1])
+        # |mask| = (batch_size, n) 
+        x = x[0]
+
+        mask_enc = torch.stack([mask for _ in range(x.size(1))], dim=1)
+        mask_dec = mask.unsqueeze(1)
+        # |mask_enc| = (batch_size, n, n)
+        # |mask_dec| = (batch_size, 1, n)
+
+        z = self.emb_enc(x)
+        z, _ = self.encoder(z, mask_enc)
+        # |z| = (batch_size, n, hidden_size)
+
+        spaces = [SingleBeamSearchSpace(
+            z.device,
+            [('prev_state_%d' % j, None, 0) for j in range(len(self.decoder._modules) + 1)],
+            beam_size=beam_size,
+            max_length=max_length,
+        ) for i in range(batch_size)]
+        done_cnt = [space.is_done() for space in spaces]
+
+        length = 0
+        while sum(done_cnt) < batch_size and length <= max_length:
+            fab_input, fab_prevs = [], [[] for _ in range(len(self.decoder._modules) + 1)]
+            fab_z, fab_mask = [], []
+
+            for i, space in enumerate(spaces):
+                if space.is_done() == 0:
+                    tmp = space.get_batch()
+
+                    y_hat_ = tmp[0]
+                    tmp = tmp[1:]
+
+                    fab_input += [y_hat_]
+                    for j, prev_ in enumerate(tmp):
+                        if prev_ is not None:
+                            fab_prevs[j] += [prev_]
+                        else:
+                            fab_prevs[j] = None
+
+                    fab_z += [z[i].unsqueeze(0)] * beam_size
+                    fab_mask += [mask_dec[i].unsqueeze(0)] * beam_size
+
+            fab_input = torch.cat(fab_input, dim=0)
+            for i, fab_prev in enumerate(fab_prevs):
+                if fab_prev is not None:
+                    fab_prevs[i] = torch.cat(fab_prev, dim=0)
+            fab_z = torch.cat(fab_z, dim=0)
+            fab_mask = torch.cat(fab_mask, dim=0)
+            # |fab_input| = (current_batch_size, 1,)
+            # |fab_prevs[i]| = (current_batch_size, length, hidden_size)
+            # |fab_z| = (current_batch_size, n, hidden_size)
+            # |fab_mask| = (current_batch_size, 1, n)
+
+            # Unlike training procedure, take the last time-step's output during the inference.
+            h_t = self.emb_dec(fab_input)
+            # |h_t| = (current_batch_size, 1, hidden_size)
+            if fab_prevs[0] is None:
+                fab_prevs[0] = h_t
+            else:
+                fab_prevs[0] = torch.cat([fab_prevs[0], h_t], dim=1)
+
+            for i, block in enumerate(self.decoder._modules.values()):
+                prev = fab_prevs[i]
+                # |prev| = (current_batch_size, m, hidden_size)
+
+                h_t, _, _, _ = block(h_t, fab_z, fab_mask, prev)
+                # |h_t| = (current_batch_size, 1, hidden_size)
+
+                if fab_prevs[i + 1] is None:
+                    fab_prevs[i + 1] = h_t
+                else:
+                    fab_prevs[i + 1] = torch.cat([fab_prevs[i + 1], h_t], dim=1)
+
+            y_hat_t = self.softmax(self.generator(h_t))
+            # |y_hat_t| = (batch_size, 1, output_size)
+
+            cnt = 0
+            for space in spaces:
+                if space.is_done() == 0:
+                    from_index = cnt * beam_size
+                    to_index = from_index + beam_size
+
+                    space.collect_result(
+                        y_hat_t[from_index:to_index],
+                        [
+                            (
+                                'prev_state_%d' % i,
+                                fab_prevs[i][from_index:to_index],
+                            ) for i in range(len(self.decoder._modules) + 1)
+                        ],
+                    )
+
+                    cnt += 1
+
+            done_cnt = [space.is_done() for space in spaces]
+            length += 1
+
+        batch_sentences = []
+        batch_probs = []
+
+        for i, space in enumerate(spaces):
+            sentences, probs = space.get_n_best(n_best)
+
+            batch_sentences += [sentences]
+            batch_probs += [probs]
+
+        return batch_sentences, batch_probs
+
