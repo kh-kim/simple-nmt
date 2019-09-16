@@ -6,7 +6,7 @@ from simple_nmt.search import SingleBeamSearchSpace
 
 
 class Attention(nn.Module):
-    
+
     def __init__(self):
         super().__init__()
 
@@ -15,6 +15,7 @@ class Attention(nn.Module):
     def forward(self, Q, K, V, mask=None, dk=64):
         # |Q| = (batch_size, m, hidden_size)
         # |K| = |V| = (batch_size, n, hidden_size)
+        # |mask| = (batch_size, m, n)
 
         w = torch.bmm(Q, K.transpose(1, 2))
         # |w| = (batch_size, m, n)
@@ -30,17 +31,17 @@ class Attention(nn.Module):
 
 
 class MultiHead(nn.Module):
-    
+
     def __init__(self, hidden_size, n_splits):
         super().__init__()
 
         self.hidden_size = hidden_size
         self.n_splits = n_splits
 
-        self.Q_linear = nn.Linear(hidden_size, hidden_size)
-        self.K_linear = nn.Linear(hidden_size, hidden_size)
-        self.V_linear = nn.Linear(hidden_size, hidden_size)
-        self.linear = nn.Linear(hidden_size, hidden_size)
+        self.Q_linear = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.K_linear = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.V_linear = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.linear = nn.Linear(hidden_size, hidden_size, bias=False)
 
         self.attn = Attention()
 
@@ -68,7 +69,7 @@ class MultiHead(nn.Module):
         c = self.attn(
             QWs, KWs, VWs,
             mask=mask,
-            dk=self.hidden_size / self.n_splits,
+            dk=self.hidden_size // self.n_splits,
         )
         # |c| = (batch_size * n_splits, m, hidden_size / n_splits)
         c = c.split(Q.size(0), dim=0)
@@ -80,7 +81,7 @@ class MultiHead(nn.Module):
 
 
 class EncoderBlock(nn.Module):
-    
+
     def __init__(self, hidden_size, n_splits, dropout_p=.1):
         super().__init__()
 
@@ -100,14 +101,18 @@ class EncoderBlock(nn.Module):
         # |x| = (batch_size, n, hidden_size)
         # |mask| = (batch_size, n, n)
 
-        z = self.attn_norm(x + self.attn_dropout(self.attn(x, x, x, mask=mask)))
+        z = self.attn_norm(x + self.attn_dropout(self.attn(Q=x,
+                                                           K=x,
+                                                           V=x,
+                                                           mask=mask)))
         z = self.fc_norm(z + self.fc_dropout(self.fc(z)))
         # |z| = (batch_size, n, hidden_size)
 
         return z, mask
 
+
 class DecoderBlock(nn.Module):
-    
+
     def __init__(self, hidden_size, n_splits, dropout_p=.1):
         super().__init__()
 
@@ -141,30 +146,29 @@ class DecoderBlock(nn.Module):
             batch_size = x.size(0)
             m = x.size(1)
 
-            forward_mask = torch.triu(x.new_ones((m, m)), diagonal=1).byte()
-            # |forward_mask| = (m, m)
-            forward_mask = forward_mask.unsqueeze(0).expand(batch_size, *forward_mask.size())
-            # |forward_mask| = (batch_size, m, m)
+            fwd_mask = torch.triu(x.new_ones((m, m)), diagonal=1).byte()
+            # |fwd_mask| = (m, m)
+            fwd_mask = fwd_mask.unsqueeze(0).expand(batch_size,
+                                                    *fwd_mask.size())
+            # |fwd_mask| = (batch_size, m, m)
 
             z = self.masked_attn_norm(x + self.masked_attn_dropout(
-                self.masked_attn(x, x, x, mask=forward_mask)
+                self.masked_attn(x, x, x, mask=fwd_mask)
             ))
             # |z| = (batch_size, m, hidden_size)
 
         # |KV| = (batch_size, n, hidden_size)
         # |mask| = (batch_size, m, n)
-        z = self.attn_norm(z + self.attn_dropout(self.attn(Q=z, K=KV, V=KV, mask=mask)))
+        z = self.attn_norm(z + self.attn_dropout(self.attn(Q=z,
+                                                           K=KV,
+                                                           V=KV,
+                                                           mask=mask)))
         # |z| = (batch_size, m, hidden_size)
 
         z = self.fc_norm(z + self.fc_dropout(self.fc(z)))
         # |z| = (batch_size, m, hidden_size)
 
-        return (
-            z,
-            KV,
-            mask,
-            prev,
-        )
+        return z, KV, mask, prev
 
 
 class MySequential(nn.Sequential):
@@ -177,7 +181,7 @@ class MySequential(nn.Sequential):
 
 
 class Transformer(nn.Module):
-    
+
     def __init__(
         self,
         input_size,
@@ -201,11 +205,21 @@ class Transformer(nn.Module):
         self.emb_enc = nn.Embedding(input_size, hidden_size)
         self.emb_dec = nn.Embedding(output_size, hidden_size)
 
+        # To do: positional encoding is necessary.
+
         self.encoder = MySequential(
-            *[EncoderBlock(hidden_size, n_splits, dropout_p) for _ in range(n_enc_blocks)]
+            *[EncoderBlock(
+                hidden_size,
+                n_splits,
+                dropout_p
+              ) for _ in range(n_enc_blocks)],
         )
         self.decoder = MySequential(
-            *[DecoderBlock(hidden_size, n_splits, dropout_p) for _ in range(n_dec_blocks)],
+            *[DecoderBlock(
+                hidden_size,
+                n_splits,
+                dropout_p
+              ) for _ in range(n_dec_blocks)],
         )
         self.generator = nn.Linear(hidden_size, output_size)
         self.softmax = nn.LogSoftmax(dim=-1)
@@ -216,13 +230,13 @@ class Transformer(nn.Module):
         max_length = max(length)
         for l in length:
             if max_length - l > 0:
-                # If the length is shorter than maximum length among samples, 
+                # If the length is shorter than maximum length among samples,
                 # set last few values to be 1s to remove attention weight.
                 mask += [torch.cat([x.new_ones(1, l).zero_(),
                                     x.new_ones(1, (max_length - l))
                                     ], dim=-1)]
             else:
-                # If the length of the sample equals to maximum length among samples, 
+                # If length of sample equals to maximum length among samples,
                 # set every value in mask to be 0.
                 mask += [x.new_ones(1, l).zero_()]
 
@@ -236,7 +250,7 @@ class Transformer(nn.Module):
         # |y| = (batch_size, m)
 
         mask = self._generate_mask(x[0], x[1])
-        # |mask| = (batch_size, n) 
+        # |mask| = (batch_size, n)
         x = x[0]
 
         mask_enc = torch.stack([mask for _ in range(x.size(1))], dim=1)
@@ -245,7 +259,7 @@ class Transformer(nn.Module):
         # |mask_dec| = (batch_size, m, n)
 
         z = self.emb_enc(x)
-        z, _ = self.encoder(z, mask_enc)        
+        z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
         h = self.emb_dec(y)
@@ -262,7 +276,7 @@ class Transformer(nn.Module):
         batch_size = x[0].size(0)
 
         mask = self._generate_mask(x[0], x[1])
-        # |mask| = (batch_size, n) 
+        # |mask| = (batch_size, n)
         x = x[0]
 
         mask_enc = torch.stack([mask for _ in range(x.size(1))], dim=1)
@@ -279,10 +293,13 @@ class Transformer(nn.Module):
         # |y_t_1| = (batch_size, 1)
         is_undone = x.new_ones(batch_size, 1).float()
 
-        prevs, y_hats, indice = [None for _ in range(len(self.decoder._modules) + 1)], [], []
-        # Repeat a loop while sum of 'is_undone' flag is bigger than 0, or current time-step is smaller than maximum length.
+        prevs = [None for _ in range(len(self.decoder._modules) + 1)]
+        y_hats, indice = [], []
+        # Repeat a loop while sum of 'is_undone' flag is bigger than 0,
+        # or current time-step is smaller than maximum length.
         while is_undone.sum() > 0 and len(indice) < max_length:
-            # Unlike training procedure, take the last time-step's output during the inference.
+            # Unlike training procedure,
+            # take the last time-step's output during the inference.
             h_t = self.emb_dec(y_t_1)
             # |h_t| = (batch_size, 1, hidden_size))
             if prevs[0] is None:
@@ -312,7 +329,10 @@ class Transformer(nn.Module):
                 # Take a random sampling based on the multinoulli distribution.
                 y_t_1 = torch.multinomial(y_hat_t.exp().view(x.size(0), -1), 1)
             # Put PAD if the sample is done.
-            y_t_1 = y_t_1.masked_fill_((1. - is_undone).byte(), data_loader.PAD)
+            y_t_1 = y_t_1.masked_fill_(
+                (1. - is_undone).byte(),
+                data_loader.PAD,
+            )
             is_undone = is_undone * torch.ne(y_t_1, data_loader.EOS).float()
             # |y| = (batch_size, 1)
             # |is_undone| = (batch_size, 1)
@@ -330,7 +350,7 @@ class Transformer(nn.Module):
         batch_size = x[0].size(0)
 
         mask = self._generate_mask(x[0], x[1])
-        # |mask| = (batch_size, n) 
+        # |mask| = (batch_size, n)
         x = x[0]
 
         mask_enc = torch.stack([mask for _ in range(x.size(1))], dim=1)
@@ -352,8 +372,8 @@ class Transformer(nn.Module):
 
         length = 0
         while sum(done_cnt) < batch_size and length <= max_length:
-            fab_input, fab_prevs = [], [[] for _ in range(len(self.decoder._modules) + 1)]
-            fab_z, fab_mask = [], []
+            fab_input, fab_z, fab_mask = [], [], []
+            fab_prevs = [[] for _ in range(len(self.decoder._modules) + 1)]
 
             for i, space in enumerate(spaces):
                 if space.is_done() == 0:
@@ -383,7 +403,8 @@ class Transformer(nn.Module):
             # |fab_z| = (current_batch_size, n, hidden_size)
             # |fab_mask| = (current_batch_size, 1, n)
 
-            # Unlike training procedure, take the last time-step's output during the inference.
+            # Unlike training procedure,
+            # take the last time-step's output during the inference.
             h_t = self.emb_dec(fab_input)
             # |h_t| = (current_batch_size, 1, hidden_size)
             if fab_prevs[0] is None:
@@ -437,4 +458,3 @@ class Transformer(nn.Module):
             batch_probs += [probs]
 
         return batch_sentences, batch_probs
-
