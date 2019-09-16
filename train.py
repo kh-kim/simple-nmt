@@ -99,6 +99,25 @@ def define_argparser():
     )
 
     p.add_argument(
+        '--lr',
+        type=float,
+        default=1e-3,
+        help='',
+    )
+    p.add_argument(
+        '--lr_step',
+        type=int,
+        default=0,
+        help='',
+    )
+    p.add_argument(
+        '--lr_gamma',
+        type=float,
+        default=.5,
+        help='',
+    )
+
+    p.add_argument(
         '--rl_lr',
         type=float,
         default=.01,
@@ -295,6 +314,7 @@ def main(config, model_weight=None, opt_weight=None):
             valid_loader=loader.valid_iter,
             vocabs=[loader.src.vocab, loader.tgt.vocab],
             n_epochs=config.n_epochs + config.dsl_n_epochs,
+            lr_schedulers=None,
         )
     else:
         loader = DataLoader(
@@ -353,11 +373,16 @@ def main(config, model_weight=None, opt_weight=None):
             crit.cuda(config.gpu_id)
 
         if config.use_transformer:
-            optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(.9, .98))
+            optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(.9, .98))
         else:
             optimizer = optim.Adam(model.parameters())
         if opt_weight is not None:
-            optimizer.load_state_dict(opt_weight)        
+            optimizer.load_state_dict(opt_weight)
+
+        if config.lr_step > 0:
+            lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=config.lr_step, gamma=config.lr_gamma)
+        else:
+            lr_scheduler = None
         print(optimizer)
 
         # Start training. This function maybe equivalant to 'fit' function in Keras.
@@ -371,6 +396,7 @@ def main(config, model_weight=None, opt_weight=None):
             src_vocab=loader.src.vocab,
             tgt_vocab=loader.tgt.vocab,
             n_epochs=config.n_epochs,
+            lr_scheduler=lr_scheduler,
         )
 
         if config.rl_n_epochs > 0:
