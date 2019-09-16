@@ -34,9 +34,9 @@ class SingleBeamSearchSpace():
         # 1 if it is done else 0
         self.masks = [torch.ByteTensor(beam_size).zero_().to(self.device)]
 
-        # We don't need to remember every time-step of hidden states: prev_hidden, prev_cell, prev_h_t_tilde
+        # We don't need to remember every time-step of hidden states:
+        #       prev_hidden, prev_cell, prev_h_t_tilde
         # What we need is remember just last one.
-        # Future work: make this class to deal with any necessary information for other architecture, such as Transformer.
 
         self.prev_status = collections.OrderedDict()
         self.batch_dims = collections.OrderedDict()
@@ -55,7 +55,8 @@ class SingleBeamSearchSpace():
                            alpha=LENGTH_PENALTY,
                            min_length=MIN_LENGTH
                            ):
-        # Calculate length-penalty, because shorter sentence usually have bigger probability.
+        # Calculate length-penalty,
+        # because shorter sentence usually have bigger probability.
         # Thus, we need to put penalty for shorter one.
         p = (1 + length) ** alpha / (1 + min_length) ** alpha
 
@@ -73,7 +74,7 @@ class SingleBeamSearchSpace():
 
         # |y_hat| = (beam_size, 1)
         # if model != transformer:
-        #     |hidden| = (n_layers, beam_size, hidden_size)
+        #     |hidden| = |cell| = (n_layers, beam_size, hidden_size)
         #     |h_t_tilde| = (beam_size, 1, hidden_size) or None
         # else:
         return tuple([y_hat] + prev_status)
@@ -82,7 +83,7 @@ class SingleBeamSearchSpace():
         # |y_hat| = (beam_size, 1, output_size)
         # prev_status is a dict of followings:
         # if model != transformer:
-        #     |hidden| = (n_layers, beam_size, hidden_size)
+        #     |hidden| = |cell| = (n_layers, beam_size, hidden_size)
         #     |h_t_tilde| = (beam_size, 1, hidden_size)
         # else:
         output_size = y_hat.size(-1)
@@ -91,10 +92,12 @@ class SingleBeamSearchSpace():
 
         # Calculate cumulative log-probability.
         # First, fill -inf value to last cumulative probability, if the beam is already finished.
-        # Second, expand -inf filled cumulative probability to fit to 'y_hat'. (beam_size) --> (beam_size, 1, 1) --> (beam_size, 1, output_size)
+        # Second, expand -inf filled cumulative probability to fit to 'y_hat'.
+        # (beam_size) --> (beam_size, 1, 1) --> (beam_size, 1, output_size)
         # Third, add expanded cumulative probability to 'y_hat'
         cumulative_prob = y_hat + self.cumulative_probs[-1].masked_fill_(self.masks[-1], -float('inf')).view(-1, 1, 1).expand(self.beam_size, 1, output_size)
-        # Now, we have new top log-probability and its index. We picked top index as many as 'beam_size'.
+        # Now, we have new top log-probability and its index.
+        # We picked top index as many as 'beam_size'.
         # Be aware that we picked top-k from whole batch through 'view(-1)'.
         top_log_prob, top_indice = torch.topk(cumulative_prob.view(-1),
                                               self.beam_size,
@@ -119,7 +122,7 @@ class SingleBeamSearchSpace():
         for k, v in prev_status:
             self.prev_status[k] = torch.index_select(
                 v,
-                dim = self.batch_dims[k],
+                dim=self.batch_dims[k],
                 index=self.prev_beam_indice[-1]
             ).contiguous()
 
