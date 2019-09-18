@@ -99,21 +99,32 @@ def define_argparser():
     )
 
     p.add_argument(
+        '--use_adam',
+        action='store_true',
+        help='',
+    )
+    p.add_argument(
         '--lr',
         type=float,
-        default=1e-3,
+        default=1.,
         help='',
     )
     p.add_argument(
         '--lr_step',
         type=int,
-        default=0,
+        default=1,
         help='',
     )
     p.add_argument(
         '--lr_gamma',
         type=float,
         default=.5,
+        help='',
+    )
+    p.add_argument(
+        '--lr_decay_start',
+        type=int,
+        default=10,
         help='',
     )
 
@@ -356,7 +367,8 @@ def main(config, model_weight=None, opt_weight=None):
         # Thus, set a weight for PAD to zero.
         loss_weight = torch.ones(output_size)
         loss_weight[data_loader.PAD] = 0.
-        # Instead of using Cross-Entropy loss, we can use Negative Log-Likelihood(NLL) loss with log-probability.
+        # Instead of using Cross-Entropy loss,
+        # we can use Negative Log-Likelihood(NLL) loss with log-probability.
         crit = nn.NLLLoss(weight=loss_weight, 
                           reduction='sum'
                           )
@@ -372,17 +384,28 @@ def main(config, model_weight=None, opt_weight=None):
             model.cuda(config.gpu_id)
             crit.cuda(config.gpu_id)
 
-        if config.use_transformer:
-            optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(.9, .98))
+        if config.use_adam:
+            if config.use_transformer:
+                optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(.9, .98))
+            else: # case of rnn based seq2seq.
+                optimizer = optim.Adam(model.parameters(), lr=config.lr)
         else:
-            optimizer = optim.Adam(model.parameters())
-        if opt_weight is not None:
+            optimizer = optim.SGD(model.parameters(), lr=config.lr)
+
+        if opt_weight is not None and config.use_adam:
             optimizer.load_state_dict(opt_weight)
 
         if config.lr_step > 0:
-            lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=config.lr_step, gamma=config.lr_gamma)
+            lr_scheduler = optim.lr_scheduler.MultiStepLR(
+                optimizer,
+                milestones=[i for i in range(max(0, config.lr_decay_start - 1),
+                                             config.n_epochs,
+                                             config.lr_step)],
+                gamma=config.lr_gamma
+            )
         else:
             lr_scheduler = None
+
         print(optimizer)
 
         # Start training. This function maybe equivalant to 'fit' function in Keras.
