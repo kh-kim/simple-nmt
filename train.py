@@ -39,118 +39,118 @@ def define_argparser():
         '--gpu_id',
         type=int,
         default=-1,
-        help='GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=-1'
+        help='GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=%(default)s'
     )
 
     p.add_argument(
         '--batch_size',
         type=int,
         default=32,
-        help='Mini batch size for gradient descent. Default=32'
+        help='Mini batch size for gradient descent. Default=%(default)s'
     )
     p.add_argument(
         '--n_epochs',
         type=int,
         default=15,
-        help='Number of epochs to train. Default=18'
+        help='Number of epochs to train. Default=%(default)s'
     )
     p.add_argument(
         '--verbose',
         type=int,
         default=2,
-        help='VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2'
+        help='VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2. Default=%(default)s'
     )
 
     p.add_argument(
         '--max_length',
         type=int,
         default=80,
-        help='Maximum length of the training sequence. Default=80'
+        help='Maximum length of the training sequence. Default=%(default)s'
     )
     p.add_argument(
         '--dropout',
         type=float,
         default=.2,
-        help='Dropout rate. Default=0.2'
+        help='Dropout rate. Default=%(default)s'
     )
     p.add_argument(
         '--word_vec_size',
         type=int,
         default=512,
-        help='Word embedding vector dimension. Default=512'
+        help='Word embedding vector dimension. Default=%(default)s'
     )
     p.add_argument(
         '--hidden_size',
         type=int,
         default=768,
-        help='Hidden size of LSTM. Default=768'
+        help='Hidden size of LSTM. Default=%(default)s'
     )
     p.add_argument(
         '--n_layers',
         type=int,
         default=4,
-        help='Number of layers in LSTM. Default=4'
+        help='Number of layers in LSTM. Default=%(default)s'
     )
     p.add_argument(
         '--max_grad_norm',
         type=float,
         default=5.,
-        help='Threshold for gradient clipping. Default=5.0'
+        help='Threshold for gradient clipping. Default=%(default)s'
     )
 
     p.add_argument(
         '--use_adam',
         action='store_true',
-        help='',
+        help='Use Adam as optimizer instead of SGD. Other lr arguments should be changed.',
     )
     p.add_argument(
         '--lr',
         type=float,
         default=1.,
-        help='',
+        help='Initial learning rate. Default=%(default)s',
     )
     p.add_argument(
         '--lr_step',
         type=int,
         default=1,
-        help='',
+        help='Number of epochs for each learning rate decay. Default=%(default)s',
     )
     p.add_argument(
         '--lr_gamma',
         type=float,
         default=.5,
-        help='',
+        help='Learning rate decay rate. Default=%(default)s',
     )
     p.add_argument(
         '--lr_decay_start',
         type=int,
         default=10,
-        help='',
+        help='Learning rate decay start at. Default=%(default)s',
     )
 
     p.add_argument(
         '--rl_lr',
         type=float,
         default=.01,
-        help='Learning rate for reinforcement learning. Default=.01'
+        help='Learning rate for reinforcement learning. Default=%(default)s'
     )
     p.add_argument(
         '--rl_n_samples',
         type=int,
         default=1,
-        help='Number of samples to get baseline. Default=1'
+        help='Number of samples to get baseline. Default=%(default)s'
     )
     p.add_argument(
         '--rl_n_epochs',
         type=int,
         default=10,
-        help='Number of epochs for reinforcement learning. Default=10'
+        help='Number of epochs for reinforcement learning. Default=%(default)s'
     )
     p.add_argument(
         '--rl_n_gram',
         type=int,
         default=6,
-        help='Maximum number of tokens to calculate BLEU for reinforcement learning. Default=6'
+        help='Maximum number of tokens to calculate BLEU for reinforcement learning. Default=%(default)s'
     )
 
     p.add_argument(
@@ -162,13 +162,13 @@ def define_argparser():
         '--lm_n_epochs',
         type=int,
         default=10,
-        help='Number of epochs for language model training. Default=5'
+        help='Number of epochs for language model training. Default=%(default)s'
     )
     p.add_argument(
         '--lm_batch_size',
         type=int,
         default=512,
-        help='Batch size for language model training. Default=512',
+        help='Batch size for language model training. Default=%(default)s',
     )
     p.add_argument(
         '--dsl_n_epochs',
@@ -180,19 +180,19 @@ def define_argparser():
         '--dsl_lambda',
         type=float,
         default=1e-3,
-        help='Lagrangian Multiplier for regularization term. Default=1e-3'
+        help='Lagrangian Multiplier for regularization term. Default=%(default)s'
     )
 
     p.add_argument(
         '--use_transformer',
         action='store_true',
-        help='',
+        help='Set model architecture as Transformer.',
     )
     p.add_argument(
         '--n_splits',
         type=int,
-        default=16,
-        help='',
+        default=8,
+        help='Number of heads in multi-head attention in Transformer. Default=%(default)s',
     )
 
     config = p.parse_args()
