@@ -49,6 +49,11 @@ def define_argparser():
                    default=None,
                    help='Source language and target language. Example: enko'
                    )
+    p.add_argument('--length_penalty',
+                   type=float,
+                   default=.2,
+                   help='',
+                   )
 
     config = p.parse_args()
 
@@ -203,7 +208,8 @@ if __name__ == '__main__':
                 batch_indice, _ = model.batch_beam_search(x,
                                                           beam_size=config.beam_size,
                                                           max_length=config.max_length,
-                                                          n_best=config.n_best
+                                                          n_best=config.n_best,
+                                                          length_penalty=config.length_penalty,
                                                           )
 
                 # Restore the original orders.

@@ -345,7 +345,7 @@ class Transformer(nn.Module):
 
         return y_hats, indice
 
-    def batch_beam_search(self, x, beam_size=5, max_length=255, n_best=1):
+    def batch_beam_search(self, x, beam_size=5, max_length=255, n_best=1, length_penalty=.2):
         # |x[0]| = (batch_size, n)
         batch_size = x[0].size(0)
 
@@ -452,7 +452,7 @@ class Transformer(nn.Module):
         batch_probs = []
 
         for i, space in enumerate(spaces):
-            sentences, probs = space.get_n_best(n_best)
+            sentences, probs = space.get_n_best(n_best, length_penalty=length_penalty)
 
             batch_sentences += [sentences]
             batch_probs += [probs]

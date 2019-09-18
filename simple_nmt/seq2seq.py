@@ -361,7 +361,7 @@ class Seq2Seq(nn.Module):
 
         return y_hats, indice
 
-    def batch_beam_search(self, src, beam_size=5, max_length=255, n_best=1):
+    def batch_beam_search(self, src, beam_size=5, max_length=255, n_best=1, length_penalty=.2):
         mask, x_length = None, None
 
         if isinstance(src, tuple):
@@ -488,7 +488,7 @@ class Seq2Seq(nn.Module):
 
         # Collect the results.
         for i, space in enumerate(spaces):
-            sentences, probs = space.get_n_best(n_best)
+            sentences, probs = space.get_n_best(n_best, length_penalty=length_penalty)
 
             batch_sentences += [sentences]
             batch_probs += [probs]

@@ -6,7 +6,7 @@ import torch.nn as nn
 
 import data_loader
 
-LENGTH_PENALTY = 1.2
+LENGTH_PENALTY = .2
 MIN_LENGTH = 5
 
 
@@ -58,7 +58,7 @@ class SingleBeamSearchSpace():
         # Calculate length-penalty,
         # because shorter sentence usually have bigger probability.
         # Thus, we need to put penalty for shorter one.
-        p = (1 + length) ** alpha / (1 + min_length) ** alpha
+        p = ((min_length + length) / (min_length + 1)) ** alpha
 
         return p
 
@@ -128,14 +128,14 @@ class SingleBeamSearchSpace():
                 index=self.prev_beam_indice[-1]
             ).contiguous()
 
-    def get_n_best(self, n=1):
+    def get_n_best(self, n=1, length_penalty=.2):
         sentences, probs, founds = [], [], []
 
         for t in range(len(self.word_indice)):  # for each time-step,
             for b in range(self.beam_size):  # for each beam,
                 if self.masks[t][b] == 1:  # if we had EOS on this time-step and beam,
                     # Take a record of penaltified log-proability.
-                    probs += [self.cumulative_probs[t][b] / self.get_length_penalty(t)]
+                    probs += [self.cumulative_probs[t][b] / self.get_length_penalty(t, alpha=length_penalty)]
                     founds += [(t, b)]
 
         # Also, collect log-probability from last time-step, for the case of EOS is not shown.
