@@ -316,10 +316,19 @@ class DualSupervisedTrainer():
             }, model_fn
         )
 
-    def train(self, models, language_models, crits, optimizers, train_loader, valid_loader, vocabs, n_epochs):
+    def train(
+        self,
+        models, language_models,
+        crits, optimizers,
+        train_loader, valid_loader,
+        vocabs,
+        n_epochs,
+        lr_schedulers=None
+    ):
         trainer = Engine(self.step)
         trainer.config = self.config
-        trainer.models, trainer.crits, trainer.optimizers = models, crits, optimizers
+        trainer.models, trainer.crits = models, crits
+        trainer.optimizers, trainer.lr_schedulers = optimizers, lr_schedulers
         trainer.language_models = language_models
         trainer.epoch_idx = 0
 
@@ -332,6 +341,10 @@ class DualSupervisedTrainer():
 
         def run_validation(engine, evaluator, valid_loader):
             evaluator.run(valid_loader, max_epochs=1)
+
+            if engine.lr_schedulers is not None:
+                for s in engine.lr_schedulers:
+                    s.step()
 
         trainer.add_event_handler(
             Events.EPOCH_COMPLETED, run_validation, evaluator, valid_loader

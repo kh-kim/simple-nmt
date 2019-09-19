@@ -8,6 +8,7 @@ import torch
 from data_loader import DataLoader
 import data_loader
 from simple_nmt.seq2seq import Seq2Seq
+from simple_nmt.transformer import Transformer
 
 
 def define_argparser():
@@ -20,33 +21,38 @@ def define_argparser():
     p.add_argument('--gpu_id',
                    type=int,
                    default=-1,
-                   help='GPU ID to use. -1 for CPU. Default=-1'
+                   help='GPU ID to use. -1 for CPU. Default=%(default)s'
                    )
 
     p.add_argument('--batch_size',
                    type=int,
                    default=128,
-                   help='Mini batch size for parallel inference. Default=128'
+                   help='Mini batch size for parallel inference. Default=%(default)s'
                    )
     p.add_argument('--max_length',
                    type=int,
                    default=255,
-                   help='Maximum sequence length for inference. Default=255'
+                   help='Maximum sequence length for inference. Default=%(default)s'
                    )
     p.add_argument('--n_best',
                    type=int,
                    default=1,
-                   help='Number of best inference result per sample. Default=1'
+                   help='Number of best inference result per sample. Default=%(default)s'
                    )
     p.add_argument('--beam_size',
                    type=int,
                    default=5,
-                   help='Beam size for beam search. Default=5'
+                   help='Beam size for beam search. Default=%(default)s'
                    )
     p.add_argument('--lang',
                    type=str,
                    default=None,
                    help='Source language and target language. Example: enko'
+                   )
+    p.add_argument('--length_penalty',
+                   type=float,
+                   default=1.2,
+                   help='Length penalty parameter that higher value produce shorter results. Default=%(default)s',
                    )
 
     config = p.parse_args()
@@ -126,13 +132,24 @@ if __name__ == '__main__':
     output_size = len(loader.tgt.vocab)
 
     # Declare sequence-to-sequence model.
-    model = Seq2Seq(input_size,
-                    train_config.word_vec_size,
-                    train_config.hidden_size,
-                    output_size,
-                    n_layers=train_config.n_layers,
-                    dropout_p=train_config.dropout
-                    )
+    if train_config.use_transformer:
+        model = Transformer(
+            input_size,
+            train_config.hidden_size,
+            output_size,
+            n_splits=train_config.n_splits,
+            n_enc_blocks=train_config.n_layers,
+            n_dec_blocks=train_config.n_layers,
+            dropout_p=train_config.dropout,
+        )
+    else:
+        model = Seq2Seq(input_size,
+                        train_config.word_vec_size,
+                        train_config.hidden_size,
+                        output_size,
+                        n_layers=train_config.n_layers,
+                        dropout_p=train_config.dropout
+                        )
 
     if train_config.dsl:
         if not is_reverse:
@@ -191,7 +208,8 @@ if __name__ == '__main__':
                 batch_indice, _ = model.batch_beam_search(x,
                                                           beam_size=config.beam_size,
                                                           max_length=config.max_length,
-                                                          n_best=config.n_best
+                                                          n_best=config.n_best,
+                                                          length_penalty=config.length_penalty,
                                                           )
 
                 # Restore the original orders.

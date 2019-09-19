@@ -31,7 +31,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
 
         scores = []
 
-        # Actually, below is really far from parallized operations.
+        # Actually, below is really far from parallelized operations.
         # Thus, it may cause slow training.
         for b in range(y.size(0)):
             ref = []
@@ -66,7 +66,8 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         batch_size = indice.size(0)
         output_size = y_hat.size(-1)
 
-        # Before we get the gradient, multiply -reward for each sample and each time-step.
+        # Before we get the gradient,
+        # multiply -reward for each sample and each time-step.
         y_hat = y_hat * -reward.view(-1, 1, 1).expand(*y_hat.size())
 
         # Generate one-hot to get log-probability.
@@ -104,8 +105,8 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         engine.model.train()        
         engine.optimizer.zero_grad()
 
-        # Raw target variable has both BOS and EOS token. 
-        # The output of sequence-to-sequence does not have BOS token. 
+        # Raw target variable has both BOS and EOS token.
+        # The output of sequence-to-sequence does not have BOS token.
         # Thus, remove BOS token for reference.
         x, y = mini_batch.src, mini_batch.tgt[0][:, 1:]
         # |x| = (batch_size, length)
@@ -153,8 +154,13 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         final_reward = actor_reward - baseline
         # |final_reward| = (batch_size)
 
-        # calcuate gradients with back-propagation
-        MinimumRiskTrainer.get_gradient(y_hat, indice, engine.crit, reward=final_reward)
+        # calculate gradients with back-propagation
+        MinimumRiskTrainer.get_gradient(
+            y_hat,
+            indice,
+            engine.crit,
+            reward=final_reward
+        )
 
         p_norm = float(get_parameter_norm(engine.model.parameters()))
         g_norm = float(get_grad_norm(engine.model.parameters()))
@@ -167,7 +173,13 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         # Take a step of gradient descent.
         engine.optimizer.step()
 
-        return float(actor_reward.mean()), float(baseline.mean()), float(final_reward.mean()), p_norm, g_norm
+        return (
+            float(actor_reward.mean()),
+            float(baseline.mean()),
+            float(final_reward.mean()),
+            p_norm,
+            g_norm,
+        )
 
     @staticmethod
     def validate(engine, mini_batch):
@@ -210,7 +222,11 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
 
         if verbose >= VERBOSE_BATCH_WISE:
             pbar = ProgressBar(bar_format=None, ncols=120)
-            pbar.attach(trainer, ['|param|', '|g_param|', 'actor', 'baseline', 'reward'])
+            pbar.attach(trainer, ['|param|',
+                                  '|g_param|',
+                                  'actor',
+                                  'baseline',
+                                  'reward'])
 
         if verbose >= VERBOSE_EPOCH_WISE:
             @trainer.on(Events.EPOCH_COMPLETED)
@@ -257,9 +273,11 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         # Set a filename for model of last epoch.
         # We need to put every information to filename, as much as possible.
         model_fn = config.model_fn.split('.')
-        
-        model_fn = model_fn[:-1] + ['%02d' % (train_engine.state.epoch),
-                                    '%.2f-%.2f' % (avg_train_bleu, avg_valid_bleu),
+
+        model_fn = model_fn[:-1] + ['mrt',
+                                    '%02d' % (train_engine.state.epoch),
+                                    '%.2f-%.2f' % (avg_train_bleu,
+                                                   avg_valid_bleu),
                                     ] + [model_fn[-1]]
 
         model_fn = '.'.join(model_fn)
@@ -273,4 +291,3 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
                 'tgt_vocab': tgt_vocab,
             }, model_fn
         )
-

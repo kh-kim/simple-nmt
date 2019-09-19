@@ -1,3 +1,4 @@
+import collections
 from operator import itemgetter
 
 import torch
@@ -5,17 +6,17 @@ import torch.nn as nn
 
 import data_loader
 
-LENGTH_PENALTY = 1.2
+LENGTH_PENALTY = .2
 MIN_LENGTH = 5
 
 
 class SingleBeamSearchSpace():
 
     def __init__(self,
-                 hidden,
-                 h_t_tilde=None,
+                 device,
+                 prev_status=None, # list of tuple, (status_name, status, batch_dim)
                  beam_size=5,
-                 max_length=255
+                 max_length=255,
                  ):
         self.beam_size = beam_size
         self.max_length = max_length
@@ -23,7 +24,7 @@ class SingleBeamSearchSpace():
         super(SingleBeamSearchSpace, self).__init__()
 
         # To put data to same device.
-        self.device = hidden[0].device
+        self.device = device
         # Inferred word index for each time-step. For now, initialized with initial time-step.
         self.word_indice = [torch.LongTensor(beam_size).zero_().to(self.device) + data_loader.BOS]
         # Index origin of current beam.
@@ -33,21 +34,18 @@ class SingleBeamSearchSpace():
         # 1 if it is done else 0
         self.masks = [torch.ByteTensor(beam_size).zero_().to(self.device)]
 
-        # We don't need to remember every time-step of hidden states: prev_hidden, prev_cell, prev_h_t_tilde
+        # We don't need to remember every time-step of hidden states:
+        #       prev_hidden, prev_cell, prev_h_t_tilde
         # What we need is remember just last one.
-        # Future work: make this class to deal with any necessary information for other architecture, such as Transformer.
 
-        # |hidden[0]| = (n_layers, 1, hidden_size)
-        self.prev_hidden = torch.cat([hidden[0]] * beam_size, dim=1)
-        self.prev_cell = torch.cat([hidden[1]] * beam_size, dim=1)
-        # |prev_hidden| = (n_layers, beam_size, hidden_size)
-        # |prev_cell| = (n_layers, beam_size, hidden_size)
-
-        # |h_t_tilde| = (batch_size = 1, 1, hidden_size)
-        self.prev_h_t_tilde = torch.cat([h_t_tilde] * beam_size,
-                                        dim=0
-                                        ) if h_t_tilde is not None else None
-        # |prev_h_t_tilde| = (beam_size, 1, hidden_size)
+        self.prev_status = collections.OrderedDict()
+        self.batch_dims = collections.OrderedDict()
+        for status_name, status, batch_dim in prev_status:
+            if status is not None:
+                self.prev_status[status_name] = torch.cat([status] * beam_size, dim=batch_dim)
+            else:
+                self.prev_status[status_name] = None
+            self.batch_dims[status_name] = batch_dim
 
         self.current_time_step = 0
         self.done_cnt = 0
@@ -57,9 +55,10 @@ class SingleBeamSearchSpace():
                            alpha=LENGTH_PENALTY,
                            min_length=MIN_LENGTH
                            ):
-        # Calculate length-penalty, because shorter sentence usually have bigger probability.
+        # Calculate length-penalty,
+        # because shorter sentence usually have bigger probability.
         # Thus, we need to put penalty for shorter one.
-        p = (1 + length) ** alpha / (1 + min_length) ** alpha
+        p = ((min_length + length) / (min_length + 1)) ** alpha
 
         return p
 
@@ -71,33 +70,41 @@ class SingleBeamSearchSpace():
 
     def get_batch(self):
         y_hat = self.word_indice[-1].unsqueeze(-1)
-        hidden = (self.prev_hidden, self.prev_cell)
-        h_t_tilde = self.prev_h_t_tilde
+        prev_status = [v for k, v in self.prev_status.items()]
 
         # |y_hat| = (beam_size, 1)
-        # |hidden| = (n_layers, beam_size, hidden_size)
-        # |h_t_tilde| = (beam_size, 1, hidden_size) or None
-        return y_hat, hidden, h_t_tilde
+        # if model != transformer:
+        #     |hidden| = |cell| = (n_layers, beam_size, hidden_size)
+        #     |h_t_tilde| = (beam_size, 1, hidden_size) or None
+        # else:
+        return tuple([y_hat] + prev_status)
 
-    def collect_result(self, y_hat, hidden, h_t_tilde):
+    def collect_result(self, y_hat, prev_status):
         # |y_hat| = (beam_size, 1, output_size)
-        # |hidden| = (n_layers, beam_size, hidden_size)
-        # |h_t_tilde| = (beam_size, 1, hidden_size)
+        # prev_status is a dict of followings:
+        # if model != transformer:
+        #     |hidden| = |cell| = (n_layers, beam_size, hidden_size)
+        #     |h_t_tilde| = (beam_size, 1, hidden_size)
+        # else:
         output_size = y_hat.size(-1)
 
         self.current_time_step += 1
 
         # Calculate cumulative log-probability.
         # First, fill -inf value to last cumulative probability, if the beam is already finished.
-        # Second, expand -inf filled cumulative probability to fit to 'y_hat'. (beam_size) --> (beam_size, 1, 1) --> (beam_size, 1, output_size)
+        # Second, expand -inf filled cumulative probability to fit to 'y_hat'.
+        # (beam_size) --> (beam_size, 1, 1) --> (beam_size, 1, output_size)
         # Third, add expanded cumulative probability to 'y_hat'
-        cumulative_prob = y_hat + self.cumulative_probs[-1].masked_fill_(self.masks[-1], -float('inf')).view(-1, 1, 1).expand(self.beam_size, 1, output_size)
-        # Now, we have new top log-probability and its index. We picked top index as many as 'beam_size'.
+        cumulative_prob = self.cumulative_probs[-1].masked_fill_(self.masks[-1], -float('inf'))
+        cumulative_prob = y_hat + cumulative_prob.view(-1, 1, 1).expand(self.beam_size, 1, output_size)
+        # Now, we have new top log-probability and its index.
+        # We picked top index as many as 'beam_size'.
         # Be aware that we picked top-k from whole batch through 'view(-1)'.
-        top_log_prob, top_indice = torch.topk(cumulative_prob.view(-1),
-                                              self.beam_size,
-                                              dim=-1
-                                              )
+        top_log_prob, top_indice = torch.topk(
+            cumulative_prob.view(-1),
+            self.beam_size,
+            dim=-1,
+        )
         # |top_log_prob| = (beam_size)
         # |top_indice| = (beam_size)
 
@@ -114,28 +121,21 @@ class SingleBeamSearchSpace():
         # Calculate a number of finished beams.
         self.done_cnt += self.masks[-1].float().sum()
 
-        # Set hidden states for next time-step, using 'index_select' method.
-        self.prev_hidden = torch.index_select(hidden[0],
-                                              dim=1,
-                                              index=self.prev_beam_indice[-1]
-                                              ).contiguous()
-        self.prev_cell = torch.index_select(hidden[1],
-                                            dim=1,
-                                            index=self.prev_beam_indice[-1]
-                                            ).contiguous()
-        self.prev_h_t_tilde = torch.index_select(h_t_tilde,
-                                                 dim=0,
-                                                 index=self.prev_beam_indice[-1]
-                                                 ).contiguous()
+        for k, v in prev_status:
+            self.prev_status[k] = torch.index_select(
+                v,
+                dim=self.batch_dims[k],
+                index=self.prev_beam_indice[-1]
+            ).contiguous()
 
-    def get_n_best(self, n=1):
+    def get_n_best(self, n=1, length_penalty=.2):
         sentences, probs, founds = [], [], []
 
         for t in range(len(self.word_indice)):  # for each time-step,
             for b in range(self.beam_size):  # for each beam,
                 if self.masks[t][b] == 1:  # if we had EOS on this time-step and beam,
                     # Take a record of penaltified log-proability.
-                    probs += [self.cumulative_probs[t][b] / self.get_length_penalty(t)]
+                    probs += [self.cumulative_probs[t][b] / self.get_length_penalty(t, alpha=length_penalty)]
                     founds += [(t, b)]
 
         # Also, collect log-probability from last time-step, for the case of EOS is not shown.

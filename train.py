@@ -8,6 +8,7 @@ from data_loader import DataLoader
 import data_loader
 
 from simple_nmt.seq2seq import Seq2Seq
+from simple_nmt.transformer import Transformer
 from simple_nmt.rnnlm import LanguageModel
 
 
@@ -38,88 +39,118 @@ def define_argparser():
         '--gpu_id',
         type=int,
         default=-1,
-        help='GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=-1'
+        help='GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=%(default)s'
     )
 
     p.add_argument(
         '--batch_size',
         type=int,
         default=32,
-        help='Mini batch size for gradient descent. Default=32'
+        help='Mini batch size for gradient descent. Default=%(default)s'
     )
     p.add_argument(
         '--n_epochs',
         type=int,
         default=15,
-        help='Number of epochs to train. Default=18'
+        help='Number of epochs to train. Default=%(default)s'
     )
     p.add_argument(
         '--verbose',
         type=int,
         default=2,
-        help='VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2'
+        help='VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2. Default=%(default)s'
     )
 
     p.add_argument(
         '--max_length',
         type=int,
         default=80,
-        help='Maximum length of the training sequence. Default=80'
+        help='Maximum length of the training sequence. Default=%(default)s'
     )
     p.add_argument(
         '--dropout',
         type=float,
         default=.2,
-        help='Dropout rate. Default=0.2'
+        help='Dropout rate. Default=%(default)s'
     )
     p.add_argument(
         '--word_vec_size',
         type=int,
         default=512,
-        help='Word embedding vector dimension. Default=512'
+        help='Word embedding vector dimension. Default=%(default)s'
     )
     p.add_argument(
         '--hidden_size',
         type=int,
         default=768,
-        help='Hidden size of LSTM. Default=768'
+        help='Hidden size of LSTM. Default=%(default)s'
     )
     p.add_argument(
         '--n_layers',
         type=int,
         default=4,
-        help='Number of layers in LSTM. Default=4'
+        help='Number of layers in LSTM. Default=%(default)s'
     )
     p.add_argument(
         '--max_grad_norm',
         type=float,
         default=5.,
-        help='Threshold for gradient clipping. Default=5.0'
+        help='Threshold for gradient clipping. Default=%(default)s'
+    )
+
+    p.add_argument(
+        '--use_adam',
+        action='store_true',
+        help='Use Adam as optimizer instead of SGD. Other lr arguments should be changed.',
+    )
+    p.add_argument(
+        '--lr',
+        type=float,
+        default=1.,
+        help='Initial learning rate. Default=%(default)s',
+    )
+    p.add_argument(
+        '--lr_step',
+        type=int,
+        default=1,
+        help='Number of epochs for each learning rate decay. Default=%(default)s',
+    )
+    p.add_argument(
+        '--lr_gamma',
+        type=float,
+        default=.5,
+        help='Learning rate decay rate. Default=%(default)s',
+    )
+    p.add_argument(
+        '--lr_decay_start',
+        type=int,
+        default=10,
+        help='Learning rate decay start at. Default=%(default)s',
     )
 
     p.add_argument(
         '--rl_lr',
         type=float,
         default=.01,
-        help='Learning rate for reinforcement learning. Default=.01'
+        help='Learning rate for reinforcement learning. Default=%(default)s'
     )
     p.add_argument(
         '--rl_n_samples',
         type=int,
         default=1,
-        help='Number of samples to get baseline. Default=1'
+        help='Number of samples to get baseline. Default=%(default)s'
     )
     p.add_argument(
         '--rl_n_epochs',
         type=int,
         default=10,
-        help='Number of epochs for reinforcement learning. Default=10'
+        help='Number of epochs for reinforcement learning. Default=%(default)s'
     )
     p.add_argument(
         '--rl_n_gram',
         type=int,
         default=6,
-        help='Maximum number of tokens to calculate BLEU for reinforcement learning. Default=6'
+        help='Maximum number of tokens to calculate BLEU for reinforcement learning. Default=%(default)s'
     )
 
     p.add_argument(
@@ -131,13 +162,13 @@ def define_argparser():
         '--lm_n_epochs',
         type=int,
         default=10,
-        help='Number of epochs for language model training. Default=5'
+        help='Number of epochs for language model training. Default=%(default)s'
     )
     p.add_argument(
         '--lm_batch_size',
         type=int,
         default=512,
-        help='Batch size for language model training. Default=512',
+        help='Batch size for language model training. Default=%(default)s',
     )
     p.add_argument(
         '--dsl_n_epochs',
@@ -149,7 +180,19 @@ def define_argparser():
         '--dsl_lambda',
         type=float,
         default=1e-3,
-        help='Lagrangian Multiplier for regularization term. Default=1e-3'
+        help='Lagrangian Multiplier for regularization term. Default=%(default)s'
+    )
+
+    p.add_argument(
+        '--use_transformer',
+        action='store_true',
+        help='Set model architecture as Transformer.',
+    )
+    p.add_argument(
+        '--n_splits',
+        type=int,
+        default=8,
+        help='Number of heads in multi-head attention in Transformer. Default=%(default)s',
     )
 
     config = p.parse_args()
@@ -282,6 +325,7 @@ def main(config, model_weight=None, opt_weight=None):
             valid_loader=loader.valid_iter,
             vocabs=[loader.src.vocab, loader.tgt.vocab],
             n_epochs=config.n_epochs + config.dsl_n_epochs,
+            lr_schedulers=None,
         )
     else:
         loader = DataLoader(
@@ -300,21 +344,31 @@ def main(config, model_weight=None, opt_weight=None):
         # Decoder's embedding layer input size and Generator's softmax layer output size
         output_size = len(loader.tgt.vocab)
         # Declare the model
-        model = Seq2Seq(input_size,
-                        config.word_vec_size,  # Word embedding vector size
-                        config.hidden_size,  # LSTM's hidden vector size
-                        output_size,
-                        n_layers=config.n_layers,  # number of layers in LSTM
-                        dropout_p=config.dropout  # dropout-rate in LSTM
-                        )
-
-        
+        if config.use_transformer:
+            model = Transformer(
+                input_size,
+                config.hidden_size,
+                output_size,
+                n_splits=config.n_splits,
+                n_enc_blocks=config.n_layers,
+                n_dec_blocks=config.n_layers,
+                dropout_p=config.dropout,
+            )
+        else:
+            model = Seq2Seq(input_size,
+                            config.word_vec_size,  # Word embedding vector size
+                            config.hidden_size,  # LSTM's hidden vector size
+                            output_size,
+                            n_layers=config.n_layers,  # number of layers in LSTM
+                            dropout_p=config.dropout  # dropout-rate in LSTM
+                            )
 
         # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
         # Thus, set a weight for PAD to zero.
         loss_weight = torch.ones(output_size)
         loss_weight[data_loader.PAD] = 0.
-        # Instead of using Cross-Entropy loss, we can use Negative Log-Likelihood(NLL) loss with log-probability.
+        # Instead of using Cross-Entropy loss,
+        # we can use Negative Log-Likelihood(NLL) loss with log-probability.
         crit = nn.NLLLoss(weight=loss_weight, 
                           reduction='sum'
                           )
@@ -330,9 +384,28 @@ def main(config, model_weight=None, opt_weight=None):
             model.cuda(config.gpu_id)
             crit.cuda(config.gpu_id)
 
-        optimizer = optim.Adam(model.parameters())     
-        if opt_weight is not None:
-            optimizer.load_state_dict(opt_weight)        
+        if config.use_adam:
+            if config.use_transformer:
+                optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(.9, .98))
+            else: # case of rnn based seq2seq.
+                optimizer = optim.Adam(model.parameters(), lr=config.lr)
+        else:
+            optimizer = optim.SGD(model.parameters(), lr=config.lr)
+
+        if opt_weight is not None and config.use_adam:
+            optimizer.load_state_dict(opt_weight)
+
+        if config.lr_step > 0:
+            lr_scheduler = optim.lr_scheduler.MultiStepLR(
+                optimizer,
+                milestones=[i for i in range(max(0, config.lr_decay_start - 1),
+                                             config.n_epochs,
+                                             config.lr_step)],
+                gamma=config.lr_gamma
+            )
+        else:
+            lr_scheduler = None
+
         print(optimizer)
 
         # Start training. This function maybe equivalant to 'fit' function in Keras.
@@ -346,6 +419,7 @@ def main(config, model_weight=None, opt_weight=None):
             src_vocab=loader.src.vocab,
             tgt_vocab=loader.tgt.vocab,
             n_epochs=config.n_epochs,
+            lr_scheduler=lr_scheduler,
         )
 
         if config.rl_n_epochs > 0:

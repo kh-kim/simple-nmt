@@ -85,7 +85,15 @@ class LanguageModelTrainer(MaximumLikelihoodEstimationTrainer):
     def save_model(engine, train_engine, config, src_vocab, tgt_vocab):
         pass
 
-    def train(self, model, crit, optimizer, train_loader, valid_loader, src_vocab, tgt_vocab, n_epochs):
+    def train(
+        self,
+        model,
+        crit, optimizer,
+        train_loader, valid_loader,
+        src_vocab, tgt_vocab,
+        n_epochs,
+        lr_scheduler=None
+    ):
         if src_vocab is not None and tgt_vocab is not None:
             raise NotImplementedError('You should assign None one of vocab to designate target language.')
         if src_vocab is None:
@@ -97,7 +105,8 @@ class LanguageModelTrainer(MaximumLikelihoodEstimationTrainer):
 
         trainer = Engine(self.step)
         trainer.config = self.config
-        trainer.model, trainer.crit, trainer.optimizer = model, crit, optimizer
+        trainer.model, trainer.crit = model, crit
+        trainer.optimizer, trainer.lr_scheduler = optimizer, lr_scheduler
         trainer.epoch_idx = 0
         trainer.is_src_target = is_src_target
 
@@ -111,6 +120,9 @@ class LanguageModelTrainer(MaximumLikelihoodEstimationTrainer):
 
         def run_validation(engine, evaluator, valid_loader):
             evaluator.run(valid_loader, max_epochs=1)
+
+            if engine.lr_scheduler is not None:
+                engine.lr_scheduler.step()
 
         trainer.add_event_handler(
             Events.EPOCH_COMPLETED, run_validation, evaluator, valid_loader

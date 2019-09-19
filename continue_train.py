@@ -21,6 +21,12 @@ def define_argparser():
     p.add_argument('--n_layers', type=int, default=4,)
     p.add_argument('--max_grad_norm', type=float, default=5.,)
 
+    p.add_argument('--use_adam', action='store_true')
+    p.add_argument('--lr', type=float, default=1.)
+    p.add_argument('--lr_step', type=int, default=1)
+    p.add_argument('--lr_gamma', type=float, default=.5)
+    p.add_argument('--lr_decay_start', type=int, default=10)
+
     p.add_argument('--rl_lr', type=float, default=.01,)
     p.add_argument('--rl_n_samples', type=int, default=1,)
     p.add_argument('--rl_n_epochs', type=int, default=10,)
@@ -30,8 +36,9 @@ def define_argparser():
     p.add_argument('--lm_n_epochs', type=int, default=10,)
     p.add_argument('--dsl_n_epochs', type=int, default=10,)
     p.add_argument('--dsl_lambda', type=float, default=1e-3,)
-    p.add_argument('--dsl_retrain_lm', action='store_true',)
-    p.add_argument('--dsl_continue_train_lm', action='store_true',)
+
+    p.add_argument('--use_transformer', action='store_true',)
+    p.add_argument('--n_splits', type=int, default=16,)
 
     config = p.parse_args()
 
