@@ -7,14 +7,16 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 ## Features
 
 - [LSTM sequence-to-seuqnce with attention](http://aclweb.org/anthology/D15-1166)
+- [Transformer](https://arxiv.org/abs/1706.03762)
 - Reinforcement learning for fine-tuning like [Minimum Risk Training (MRT)](https://arxiv.org/abs/1512.02433)
 - Beam search with mini-batch in parallel
+- [Dual Supervised Learning](https://arxiv.org/abs/1707.00415)
 
 ## Pre-requisite
 
 - Python 3.6 or higher
-- PyTorch 0.4 or higher
-- TorchText 0.3 or higher (You may need to install from [github](https://github.com/pytorch/text).)
+- PyTorch 1.1 or higher
+- TorchText 0.3 or higher
 
 ## Usage
 
@@ -45,21 +47,23 @@ write 376423 lines to ./data/corpus.train.ko
 
 ```bash
 $ python train.py -h
-usage: train.py [-h] --model MODEL --train TRAIN --valid VALID --lang LANG
-                [--gpu_id GPU_ID] [--batch_size BATCH_SIZE]
-                [--n_epochs N_EPOCHS] [--print_every PRINT_EVERY]
-                [--early_stop EARLY_STOP] [--max_length MAX_LENGTH]
-                [--dropout DROPOUT] [--word_vec_dim WORD_VEC_DIM]
-                [--hidden_size HIDDEN_SIZE] [--n_layers N_LAYERS]
-                [--max_grad_norm MAX_GRAD_NORM] [--adam] [--lr LR]
-                [--min_lr MIN_LR] [--lr_decay_start_at LR_DECAY_START_AT]
-                [--lr_slow_decay] [--lr_decay_rate LR_DECAY_RATE]
-                [--rl_lr RL_LR] [--n_samples N_SAMPLES]
-                [--rl_n_epochs RL_N_EPOCHS] [--rl_n_gram RL_N_GRAM]
+usage: train.py [-h] --model_fn MODEL_FN --train TRAIN --valid VALID --lang
+                LANG [--gpu_id GPU_ID] [--batch_size BATCH_SIZE]
+                [--n_epochs N_EPOCHS] [--verbose VERBOSE]
+                [--max_length MAX_LENGTH] [--dropout DROPOUT]
+                [--word_vec_size WORD_VEC_SIZE] [--hidden_size HIDDEN_SIZE]
+                [--n_layers N_LAYERS] [--max_grad_norm MAX_GRAD_NORM]
+                [--use_adam] [--lr LR] [--lr_step LR_STEP]
+                [--lr_gamma LR_GAMMA] [--lr_decay_start LR_DECAY_START]
+                [--rl_lr RL_LR] [--rl_n_samples RL_N_SAMPLES]
+                [--rl_n_epochs RL_N_EPOCHS] [--rl_n_gram RL_N_GRAM] [--dsl]
+                [--lm_n_epochs LM_N_EPOCHS] [--lm_batch_size LM_BATCH_SIZE]
+                [--dsl_n_epochs DSL_N_EPOCHS] [--dsl_lambda DSL_LAMBDA]
+                [--use_transformer] [--n_splits N_SPLITS]
 
 optional arguments:
   -h, --help            show this help message and exit
-  --model MODEL         Model file name to save. Additional information would
+  --model_fn MODEL_FN   Model file name to save. Additional information would
                         be annotated to the file name.
   --train TRAIN         Training set file name except the extention. (ex:
                         train.en --> train)
@@ -71,34 +75,29 @@ optional arguments:
                         supported. -1 for CPU. Default=-1
   --batch_size BATCH_SIZE
                         Mini batch size for gradient descent. Default=32
-  --n_epochs N_EPOCHS   Number of epochs to train. Default=18
-  --print_every PRINT_EVERY
-                        Number of gradient descent steps to skip printing the
-                        training status. Default=1000
-  --early_stop EARLY_STOP
-                        The training will be stopped if there is no
-                        improvement this number of epochs. Default=-1
+  --n_epochs N_EPOCHS   Number of epochs to train. Default=15
+  --verbose VERBOSE     VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE
+                        = 0, 1, 2. Default=2
   --max_length MAX_LENGTH
                         Maximum length of the training sequence. Default=80
   --dropout DROPOUT     Dropout rate. Default=0.2
-  --word_vec_dim WORD_VEC_DIM
+  --word_vec_size WORD_VEC_SIZE
                         Word embedding vector dimension. Default=512
   --hidden_size HIDDEN_SIZE
                         Hidden size of LSTM. Default=768
   --n_layers N_LAYERS   Number of layers in LSTM. Default=4
   --max_grad_norm MAX_GRAD_NORM
                         Threshold for gradient clipping. Default=5.0
-  --adam                Use Adam instead of using SGD.
+  --use_adam            Use Adam as optimizer instead of SGD. Other lr
+                        arguments should be changed.
   --lr LR               Initial learning rate. Default=1.0
-  --min_lr MIN_LR       Minimum learning rate. Default=.000001
-  --lr_decay_start_at LR_DECAY_START_AT
-                        Start learning rate decay from this epoch.
-  --lr_slow_decay       Decay learning rate only if there is no improvement on
-                        last epoch.
-  --lr_decay_rate LR_DECAY_RATE
-                        Learning rate decay rate. Default=0.5
-  --rl_lr RL_LR         Learning rate for reinforcement learning. Default=.01
-  --n_samples N_SAMPLES
+  --lr_step LR_STEP     Number of epochs for each learning rate decay.
+                        Default=1
+  --lr_gamma LR_GAMMA   Learning rate decay rate. Default=0.5
+  --lr_decay_start LR_DECAY_START
+                        Learning rate decay start at. Default=10
+  --rl_lr RL_LR         Learning rate for reinforcement learning. Default=0.01
+  --rl_n_samples RL_N_SAMPLES
                         Number of samples to get baseline. Default=1
   --rl_n_epochs RL_N_EPOCHS
                         Number of epochs for reinforcement learning.
@@ -106,12 +105,36 @@ optional arguments:
   --rl_n_gram RL_N_GRAM
                         Maximum number of tokens to calculate BLEU for
                         reinforcement learning. Default=6
+  --dsl                 Training with Dual Supervised Learning method.
+  --lm_n_epochs LM_N_EPOCHS
+                        Number of epochs for language model training.
+                        Default=10
+  --lm_batch_size LM_BATCH_SIZE
+                        Batch size for language model training. Default=512
+  --dsl_n_epochs DSL_N_EPOCHS
+                        Number of epochs for Dual Supervised Learning. '--
+                        n_epochs' - '--dsl_n_epochs' will be number of epochs
+                        for pretraining (without regularization term).
+  --dsl_lambda DSL_LAMBDA
+                        Lagrangian Multiplier for regularization term.
+                        Default=0.001
+  --use_transformer     Set model architecture as Transformer.
+  --n_splits N_SPLITS   Number of heads in multi-head attention in
+                        Transformer. Default=8
 ```
 
 example usage:
 
+#### Seq2Seq
+
 ```bash
-$ python train.py --model ./models/enko.pth --train ./data/corpus.train --valid ./data/corpus.valid --lang enko --gpu_id 0 --word_vec_dim 256 --hidden_size 512 --batch_size 32 --n_epochs 15 --rl_n_epochs 10 --early_stop -1
+$ python train.py --model_fn ./models/enko.pth --train ./data/corpus.train --valid ./data/corpus.valid --lang enko --gpu_id 0  --batch_size 64 --n_epochs 15 --dropout .2 --word_vec_size 512 --hidden_size 768 --n_layers 4 --lr 1. --lr_step 1 --lr_gamma .5 --lr_decay_start 10 --rl_n_epochs 10
+```
+
+#### Transformer
+
+```bash
+$ python train.py --model_fn ./models/enko.transformer.pth --train ./data/big_corpus.train --valid ./data/big_corpus.valid --lang enko --gpu_id 0 --batch_size 64 --n_epochs 15 --dropout .1 --hidden_size 512 --n_layers 6 --max_grad_norm 1e+10 --use_adam --lr 2e-4 --lr_step 1 --lr_gamma .95 --lr_decay_start 2 --use_transformer --n_splits 8
 ```
 
 You may need to change the argument parameters.
@@ -122,7 +145,8 @@ You may need to change the argument parameters.
 $ python translate.py -h
 usage: translate.py [-h] --model MODEL [--gpu_id GPU_ID]
                     [--batch_size BATCH_SIZE] [--max_length MAX_LENGTH]
-                    [--n_best N_BEST] [--beam_size BEAM_SIZE]
+                    [--n_best N_BEST] [--beam_size BEAM_SIZE] [--lang LANG]
+                    [--length_penalty LENGTH_PENALTY]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -135,12 +159,16 @@ optional arguments:
   --n_best N_BEST       Number of best inference result per sample. Default=1
   --beam_size BEAM_SIZE
                         Beam size for beam search. Default=5
+  --lang LANG           Source language and target language. Example: enko
+  --length_penalty LENGTH_PENALTY
+                        Length penalty parameter that higher value produce
+                        shorter results. Default=1.2
 ```
 
 example usage:
 
 ```bash
-$ python translate.py --model ./model/enko.12.1.18-3.24.1.37-3.92.pth --gpu_id 0 --batch_size 128 --beam_size 5
+$ python translate.py --model ./model/enko.12.1.18-3.24.1.37-3.92.pth --gpu_id 0 --batch_size 128 --beam_size 8
 ```
 
 You may also need to change the argument parameters.
@@ -203,7 +231,9 @@ Below table shows that result from both MLE and MRT in Korean-English translatio
 
 ## References
 
-- [[Luong et al.2015](http://aclweb.org/anthology/D15-1166)] Effective Approaches to Attention-based Neural Machine Translation
-- [[Shen et al.2015](https://arxiv.org/abs/1512.02433)] 
-Minimum Risk Training for Neural Machine Translation
-- [[Sennrich et al.2016](http://www.aclweb.org/anthology/P16-1162)] Neural Machine Translation of Rare Words with Subword Units
+- [[Luong et al., 2015](http://aclweb.org/anthology/D15-1166)] Effective Approaches to Attention-based Neural Machine Translation
+- [[Shen et al., 2015](https://arxiv.org/abs/1512.02433)] Minimum Risk Training for Neural Machine Translation
+- [[Sennrich et al., 2016](http://www.aclweb.org/anthology/P16-1162)] Neural Machine Translation of Rare Words with Subword Units
+- [[Wu et al, 2016](https://arxiv.org/abs/1609.08144)] Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation
+- [[Vaswani et al., 2017](https://arxiv.org/abs/1706.03762)] Attention is All You Need
+- [[Xia et al., 2017](https://arxiv.org/abs/1707.00415)] Dual Supervised Learning
