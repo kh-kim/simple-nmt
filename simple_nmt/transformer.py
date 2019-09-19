@@ -226,13 +226,21 @@ class Transformer(nn.Module):
         # |x| = (batch_size, n, hidden_size)
         length, hidden_size = x.size(1), x.size(-1)
 
-        enc = x.new_zeros(x.size[1:])
+        enc = x.new_zeros(x.shape[1:])
         # |enc| = (n, hidden_size)
-        pos = init_pos + torch.arange(0, length).unsqueeze(-1)
-        dim = torch.pow(10000., torch.arange(0, dim // 2).div(hidden_size)).unsqueeze(0)
+        pos = init_pos + torch.arange(0, length, device=x.device).unsqueeze(-1)
+        dim = torch.pow(
+            10000.,
+            torch.arange(0, hidden_size // 2, device=x.device).div(hidden_size)
+        ).unsqueeze(0)
+        # |pos| = (n, 1)
+        # |dim| = (1, hidden_size // 2)
 
         assert enc[:, 0::2].size() == (pos / dim).size()
         assert enc[:, 1::2].size() == (pos / dim).size()
+
+        pos = pos.float()
+        dim = dim.float()
 
         enc[:, 0::2] = torch.sin(pos / dim)
         enc[:, 1::2] = torch.cos(pos / dim)
