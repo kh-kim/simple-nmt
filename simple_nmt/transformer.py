@@ -205,8 +205,6 @@ class Transformer(nn.Module):
         self.emb_enc = nn.Embedding(input_size, hidden_size)
         self.emb_dec = nn.Embedding(output_size, hidden_size)
 
-        # To do: positional encoding is necessary.
-
         self.encoder = MySequential(
             *[EncoderBlock(
                 hidden_size,
@@ -223,6 +221,25 @@ class Transformer(nn.Module):
         )
         self.generator = nn.Linear(hidden_size, output_size)
         self.softmax = nn.LogSoftmax(dim=-1)
+
+    def _position_encoding(self, x, init_pos=0):
+        # |x| = (batch_size, n, hidden_size)
+        length, hidden_size = x.size(1), x.size(-1)
+
+        enc = x.new_zeros(x.size[1:])
+        # |enc| = (n, hidden_size)
+        pos = init_pos + torch.arange(0, length).unsqueeze(-1)
+        dim = torch.pow(10000., torch.arange(0, dim // 2).div(hidden_size)).unsqueeze(0)
+
+        assert enc[:, 0::2].size() == (pos / dim).size()
+        assert enc[:, 1::2].size() == (pos / dim).size()
+
+        enc[:, 0::2] = torch.sin(pos / dim)
+        enc[:, 1::2] = torch.cos(pos / dim)
+
+        x = x + enc
+
+        return x
 
     def _generate_mask(self, x, length):
         mask = []
@@ -258,11 +275,11 @@ class Transformer(nn.Module):
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, m, n)
 
-        z = self.emb_enc(x)
+        z = self._position_encoding(self.emb_enc(x))
         z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
-        h = self.emb_dec(y)
+        h = self._position_encoding(self.emb_dec(y))
         h, _, _, _ = self.decoder(h, z, mask_dec, None)
         # |h| = (batch_size, m, hidden_size)
 
@@ -284,7 +301,7 @@ class Transformer(nn.Module):
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, 1, n)
 
-        z = self.emb_enc(x)
+        z = self._position_encoding(self.emb_enc(x))
         z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
@@ -300,7 +317,7 @@ class Transformer(nn.Module):
         while is_undone.sum() > 0 and len(indice) < max_length:
             # Unlike training procedure,
             # take the last time-step's output during the inference.
-            h_t = self.emb_dec(y_t_1)
+            h_t = self._position_encoding(self.emb_dec(y_t_1), init_pos=len(indice))
             # |h_t| = (batch_size, 1, hidden_size))
             if prevs[0] is None:
                 prevs[0] = h_t
@@ -358,7 +375,7 @@ class Transformer(nn.Module):
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, 1, n)
 
-        z = self.emb_enc(x)
+        z = self._position_encoding(self.emb_enc(x))
         z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
@@ -405,7 +422,7 @@ class Transformer(nn.Module):
 
             # Unlike training procedure,
             # take the last time-step's output during the inference.
-            h_t = self.emb_dec(fab_input)
+            h_t = self._position_encoding(self.emb_dec(fab_input), init_pos=length)
             # |h_t| = (current_batch_size, 1, hidden_size)
             if fab_prevs[0] is None:
                 fab_prevs[0] = h_t
