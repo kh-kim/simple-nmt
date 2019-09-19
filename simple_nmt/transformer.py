@@ -204,6 +204,7 @@ class Transformer(nn.Module):
 
         self.emb_enc = nn.Embedding(input_size, hidden_size)
         self.emb_dec = nn.Embedding(output_size, hidden_size)
+        self.emb_dropout = nn.Dropout(dropout_p)
 
         self.encoder = MySequential(
             *[EncoderBlock(
@@ -283,11 +284,11 @@ class Transformer(nn.Module):
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, m, n)
 
-        z = self._position_encoding(self.emb_enc(x))
+        z = self.emb_dropout(self._position_encoding(self.emb_enc(x)))
         z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
-        h = self._position_encoding(self.emb_dec(y))
+        h = self.emb_dropout(self._position_encoding(self.emb_dec(y)))
         h, _, _, _ = self.decoder(h, z, mask_dec, None)
         # |h| = (batch_size, m, hidden_size)
 
@@ -309,7 +310,7 @@ class Transformer(nn.Module):
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, 1, n)
 
-        z = self._position_encoding(self.emb_enc(x))
+        z = self.emb_dropout(self._position_encoding(self.emb_enc(x)))
         z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
@@ -325,7 +326,9 @@ class Transformer(nn.Module):
         while is_undone.sum() > 0 and len(indice) < max_length:
             # Unlike training procedure,
             # take the last time-step's output during the inference.
-            h_t = self._position_encoding(self.emb_dec(y_t_1), init_pos=len(indice))
+            h_t = self.emb_dropout(
+                self._position_encoding(self.emb_dec(y_t_1), init_pos=len(indice))
+            )
             # |h_t| = (batch_size, 1, hidden_size))
             if prevs[0] is None:
                 prevs[0] = h_t
@@ -383,7 +386,7 @@ class Transformer(nn.Module):
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, 1, n)
 
-        z = self._position_encoding(self.emb_enc(x))
+        z = self.emb_dropout(self._position_encoding(self.emb_enc(x)))
         z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
@@ -430,7 +433,9 @@ class Transformer(nn.Module):
 
             # Unlike training procedure,
             # take the last time-step's output during the inference.
-            h_t = self._position_encoding(self.emb_dec(fab_input), init_pos=length)
+            h_t = self.emb_dropout(
+                self._position_encoding(self.emb_dec(fab_input), init_pos=length)
+            )
             # |h_t| = (current_batch_size, 1, hidden_size)
             if fab_prevs[0] is None:
                 fab_prevs[0] = h_t
