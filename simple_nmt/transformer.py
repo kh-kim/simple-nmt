@@ -91,7 +91,7 @@ class EncoderBlock(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Linear(hidden_size, hidden_size * 4),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_size * 4, hidden_size),
         )
         self.fc_norm = nn.LayerNorm(hidden_size)
@@ -126,7 +126,7 @@ class DecoderBlock(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Linear(hidden_size, hidden_size * 4),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_size * 4, hidden_size),
         )
         self.fc_norm = nn.LayerNorm(hidden_size)
