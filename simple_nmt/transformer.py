@@ -135,7 +135,7 @@ class DecoderBlock(nn.Module):
     def forward(self, x, KV, mask, prev):
         if prev is not None:
             # |x| = (batch_size, m=1, hidden_size)
-            # |prev_i| = (batch_size, m', hidden_size)
+            # |prev| = (batch_size, m', hidden_size)
 
             z = self.masked_attn_norm(x + self.masked_attn_dropout(
                 self.masked_attn(x, prev, prev, mask=None)
