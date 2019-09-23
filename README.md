@@ -50,16 +50,19 @@ $ python train.py -h
 usage: train.py [-h] --model_fn MODEL_FN --train TRAIN --valid VALID --lang
                 LANG [--gpu_id GPU_ID] [--batch_size BATCH_SIZE]
                 [--n_epochs N_EPOCHS] [--verbose VERBOSE]
-                [--max_length MAX_LENGTH] [--dropout DROPOUT]
-                [--word_vec_size WORD_VEC_SIZE] [--hidden_size HIDDEN_SIZE]
-                [--n_layers N_LAYERS] [--max_grad_norm MAX_GRAD_NORM]
-                [--use_adam] [--lr LR] [--lr_step LR_STEP]
-                [--lr_gamma LR_GAMMA] [--lr_decay_start LR_DECAY_START]
-                [--rl_lr RL_LR] [--rl_n_samples RL_N_SAMPLES]
-                [--rl_n_epochs RL_N_EPOCHS] [--rl_n_gram RL_N_GRAM] [--dsl]
-                [--lm_n_epochs LM_N_EPOCHS] [--lm_batch_size LM_BATCH_SIZE]
-                [--dsl_n_epochs DSL_N_EPOCHS] [--dsl_lambda DSL_LAMBDA]
-                [--use_transformer] [--n_splits N_SPLITS]
+                [--init_epoch INIT_EPOCH] [--max_length MAX_LENGTH]
+                [--dropout DROPOUT] [--word_vec_size WORD_VEC_SIZE]
+                [--hidden_size HIDDEN_SIZE] [--n_layers N_LAYERS]
+                [--max_grad_norm MAX_GRAD_NORM] [--use_adam] [--lr LR]
+                [--lr_step LR_STEP] [--lr_gamma LR_GAMMA]
+                [--lr_decay_start LR_DECAY_START] [--use_noam_decay]
+                [--lr_n_warmup_steps LR_N_WARMUP_STEPS] [--rl_lr RL_LR]
+                [--rl_n_samples RL_N_SAMPLES] [--rl_n_epochs RL_N_EPOCHS]
+                [--rl_init_epoch RL_INIT_EPOCH] [--rl_n_gram RL_N_GRAM]
+                [--dsl] [--lm_n_epochs LM_N_EPOCHS]
+                [--lm_batch_size LM_BATCH_SIZE] [--dsl_n_epochs DSL_N_EPOCHS]
+                [--dsl_lambda DSL_LAMBDA] [--use_transformer]
+                [--n_splits N_SPLITS]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -78,6 +81,9 @@ optional arguments:
   --n_epochs N_EPOCHS   Number of epochs to train. Default=15
   --verbose VERBOSE     VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE
                         = 0, 1, 2. Default=2
+  --init_epoch INIT_EPOCH
+                        Set initial epoch number, which can be useful in
+                        continue training. Default=1
   --max_length MAX_LENGTH
                         Maximum length of the training sequence. Default=80
   --dropout DROPOUT     Dropout rate. Default=0.2
@@ -96,12 +102,20 @@ optional arguments:
   --lr_gamma LR_GAMMA   Learning rate decay rate. Default=0.5
   --lr_decay_start LR_DECAY_START
                         Learning rate decay start at. Default=10
+  --use_noam_decay      Use Noam learning rate decay, which is described in
+                        "Attention is All You Need" paper.
+  --lr_n_warmup_steps LR_N_WARMUP_STEPS
+                        Number of warming up steps for Noam learning rate
+                        decay. Default=48000
   --rl_lr RL_LR         Learning rate for reinforcement learning. Default=0.01
   --rl_n_samples RL_N_SAMPLES
                         Number of samples to get baseline. Default=1
   --rl_n_epochs RL_N_EPOCHS
                         Number of epochs for reinforcement learning.
                         Default=10
+  --rl_init_epoch RL_INIT_EPOCH
+                        Set initial epoch number for RL, which can be useful
+                        in continue training. Default=1
   --rl_n_gram RL_N_GRAM
                         Maximum number of tokens to calculate BLEU for
                         reinforcement learning. Default=6
@@ -133,8 +147,16 @@ $ python train.py --model_fn ./models/enko.pth --train ./data/corpus.train --val
 
 #### Transformer
 
+Using Noam learning rate decay for training:
+
 ```bash
-$ python train.py --model_fn ./models/enko.transformer.pth --train ./data/big_corpus.train --valid ./data/big_corpus.valid --lang enko --gpu_id 0 --batch_size 64 --n_epochs 15 --dropout .1 --hidden_size 512 --n_layers 6 --max_grad_norm 1e+10 --use_adam --lr 2e-4 --lr_step 1 --lr_gamma .95 --lr_decay_start 2 --use_transformer --n_splits 8
+$ python train.py --model_fn ./models/enko.transformer.pth --train ./data/big_corpus.train --valid ./data/big_corpus.valid --lang enko --gpu_id 0 --batch_size 64 --n_epochs 15 --dropout .1 --hidden_size 512 --n_layers 6 --max_grad_norm 1e+10 --use_adam --lr .0044 --use_noam_decay --lr_n_warmup_steps 48000 --use_transformer --n_splits 8
+```
+
+In case, using SGD for training -- I prefer this one:
+
+```bash
+python ./train.py --model_fn ./models/enko.transformer.sgd.pth --train ./data/big_corpus.train --valid ./data/big_corpus.valid --lang enko --gpu_id 0 --batch_size 80 --n_epochs 20 --dropout .1 --hidden_size 512 --n_layers 6 --max_grad_norm 2. --lr 1. --lr_step 1 --lr_gamma .8 --lr_decay_start 5 --use_transformer --n_splits 8
 ```
 
 You may need to change the argument parameters.

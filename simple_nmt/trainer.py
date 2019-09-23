@@ -208,4 +208,3 @@ class MaximumLikelihoodEstimationTrainer():
         trainer.run(train_loader, max_epochs=n_epochs)
 
         return model
-
