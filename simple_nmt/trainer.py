@@ -54,6 +54,9 @@ class MaximumLikelihoodEstimationTrainer():
         # Take a step of gradient descent.
         engine.optimizer.step()
 
+        if engine.config.use_noam_decay and engine.lr_scheduler is not None:
+            engine.lr_scheduler.step()
+
         return float(loss / word_count), p_norm, g_norm
 
     @staticmethod
@@ -184,7 +187,7 @@ class MaximumLikelihoodEstimationTrainer():
         def run_validation(engine, evaluator, valid_loader):
             evaluator.run(valid_loader, max_epochs=1)
 
-            if engine.lr_scheduler is not None:
+            if engine.lr_scheduler is not None and not engine.config.use_noam_decay:
                 engine.lr_scheduler.step()
 
         trainer.add_event_handler(

@@ -135,6 +135,18 @@ def define_argparser():
     )
 
     p.add_argument(
+        '--use_noam_decay',
+        action='store_true',
+        help='Use Noam learning rate decay, which is described in "Attention is All You Need" paper.',
+    )
+    p.add_argument(
+        '--lr_n_warmup_steps',
+        type=int,
+        default=48000,
+        help='Number of warming up steps for Noam learning rate decay. Default=%(default)s',
+    )
+
+    p.add_argument(
         '--rl_lr',
         type=float,
         default=.01,
@@ -398,6 +410,7 @@ def main(config, model_weight=None, opt_weight=None):
 
         if config.use_adam:
             if config.use_transformer:
+                # optimizer = optim.Adam(model.parameters(), lr=config.hidden_size**(-.5), betas=(.9, .98))
                 optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(.9, .98))
             else: # case of rnn based seq2seq.
                 optimizer = optim.Adam(model.parameters(), lr=config.lr)
@@ -407,16 +420,23 @@ def main(config, model_weight=None, opt_weight=None):
         if opt_weight is not None and config.use_adam:
             optimizer.load_state_dict(opt_weight)
 
-        if config.lr_step > 0:
-            lr_scheduler = optim.lr_scheduler.MultiStepLR(
-                optimizer,
-                milestones=[i for i in range(max(0, config.lr_decay_start - 1),
-                                             config.n_epochs,
-                                             config.lr_step)],
-                gamma=config.lr_gamma
-            )
+        if config.use_noam_decay:
+            f = lambda step: min((step + 1)**(-.5), (step + 1) * config.lr_n_warmup_steps**(-1.5))
+            lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=f)
         else:
-            lr_scheduler = None
+            if config.lr_step > 0:
+                lr_scheduler = optim.lr_scheduler.MultiStepLR(
+                    optimizer,
+                    milestones=[i for i in range(max(0, config.lr_decay_start - 1),
+                                                config.n_epochs,
+                                                config.lr_step)],
+                    gamma=config.lr_gamma
+                )
+
+                for _ in range(config.init_epoch):
+                    lr_scheduler.step()
+            else:
+                lr_scheduler = None
 
         print(optimizer)
 

@@ -28,6 +28,9 @@ def define_argparser():
     p.add_argument('--lr_gamma', type=float, default=.5)
     p.add_argument('--lr_decay_start', type=int, default=10)
 
+    p.add_argument('--use_noam_decay', action='store_true')
+    p.add_argument('--lr_n_warmup_steps', type=int, default=48000)
+
     p.add_argument('--rl_lr', type=float, default=.01,)
     p.add_argument('--rl_n_samples', type=int, default=1,)
     p.add_argument('--rl_n_epochs', type=int, default=10,)
