@@ -281,7 +281,7 @@ class DualSupervisedTrainer():
         # We need to put every information to filename, as much as possible.
         model_fn = config.model_fn.split('.')
         
-        model_fn = model_fn[:-1] + ['%02d' % (train_engine.state.epoch),
+        model_fn = model_fn[:-1] + ['%02d' % ((config.init_epoch - 1) + train_engine.state.epoch),
                                     '%.2f-%.2f' % (avg_train_x2y,
                                                    np.exp(avg_train_x2y)
                                                    ),

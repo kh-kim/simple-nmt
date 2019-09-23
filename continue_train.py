@@ -13,6 +13,7 @@ def define_argparser():
     p.add_argument('--batch_size', type=int, default=32,)
     p.add_argument('--n_epochs', type=int, default=15,)
     p.add_argument('--verbose', type=int, default=2,)
+    p.add_argument('--init_epoch', type=int, default=1,)
 
     p.add_argument('--max_length', type=int, default=80,)
     p.add_argument('--dropout', type=float, default=.2,)
@@ -30,6 +31,7 @@ def define_argparser():
     p.add_argument('--rl_lr', type=float, default=.01,)
     p.add_argument('--rl_n_samples', type=int, default=1,)
     p.add_argument('--rl_n_epochs', type=int, default=10,)
+    p.add_argument('--rl_init_epoch', type=int, default=1,)
     p.add_argument('--rl_n_gram', type=int, default=6,)
 
     p.add_argument('--dsl', action='store_true',)
@@ -75,7 +77,10 @@ if __name__ == '__main__':
         config = overwrite_config(config, prev_config)
 
         model_weight = saved_data['model']
-        opt_weight = saved_data['opt']
+        if 'lr' in vars(prev_config).keys():
+            opt_weight = None
+        else:
+            opt_weight = saved_data['opt']
 
         from train import main
         main(config, model_weight=model_weight, opt_weight=opt_weight)

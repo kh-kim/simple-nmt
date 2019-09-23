@@ -60,6 +60,12 @@ def define_argparser():
         default=2,
         help='VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2. Default=%(default)s'
     )
+    p.add_argument(
+        '--init_epoch',
+        type=int,
+        default=1,
+        help='Set initial epoch number, which can be useful in continue training. Default=%(default)s'
+    )
 
     p.add_argument(
         '--max_length',
@@ -145,6 +151,12 @@ def define_argparser():
         type=int,
         default=10,
         help='Number of epochs for reinforcement learning. Default=%(default)s'
+    )
+    p.add_argument(
+        '--rl_init_epoch',
+        type=int,
+        default=1,
+        help='Set initial epoch number for RL, which can be useful in continue training. Default=%(default)s'
     )
     p.add_argument(
         '--rl_n_gram',
