@@ -82,7 +82,7 @@ class MultiHead(nn.Module):
 
 class EncoderBlock(nn.Module):
 
-    def __init__(self, hidden_size, n_splits, dropout_p=.1):
+    def __init__(self, hidden_size, n_splits, dropout_p=.1, use_leaky_relu=False):
         super().__init__()
 
         self.attn = MultiHead(hidden_size, n_splits)
@@ -91,7 +91,7 @@ class EncoderBlock(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Linear(hidden_size, hidden_size * 4),
-            nn.LeakyReLU(),
+            nn.LeakyReLU() if use_leaky_relu else nn.ReLU(),
             nn.Linear(hidden_size * 4, hidden_size),
         )
         self.fc_norm = nn.LayerNorm(hidden_size)
@@ -113,7 +113,7 @@ class EncoderBlock(nn.Module):
 
 class DecoderBlock(nn.Module):
 
-    def __init__(self, hidden_size, n_splits, dropout_p=.1):
+    def __init__(self, hidden_size, n_splits, dropout_p=.1, use_leaky_relu=False):
         super().__init__()
 
         self.masked_attn = MultiHead(hidden_size, n_splits)
@@ -126,7 +126,7 @@ class DecoderBlock(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Linear(hidden_size, hidden_size * 4),
-            nn.LeakyReLU(),
+            nn.LeakyReLU() if use_leaky_relu else nn.ReLU(),
             nn.Linear(hidden_size * 4, hidden_size),
         )
         self.fc_norm = nn.LayerNorm(hidden_size)
@@ -191,6 +191,7 @@ class Transformer(nn.Module):
         n_enc_blocks=6,
         n_dec_blocks=6,
         dropout_p=.1,
+        use_leaky_relu=False,
     ):
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -210,14 +211,16 @@ class Transformer(nn.Module):
             *[EncoderBlock(
                 hidden_size,
                 n_splits,
-                dropout_p
+                dropout_p,
+                use_leaky_relu,
               ) for _ in range(n_enc_blocks)],
         )
         self.decoder = MySequential(
             *[DecoderBlock(
                 hidden_size,
                 n_splits,
-                dropout_p
+                dropout_p,
+                use_leaky_relu,
               ) for _ in range(n_dec_blocks)],
         )
         self.generator = nn.Linear(hidden_size, output_size)
