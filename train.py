@@ -428,12 +428,12 @@ def main(config, model_weight=None, opt_weight=None):
                 lr_scheduler = optim.lr_scheduler.MultiStepLR(
                     optimizer,
                     milestones=[i for i in range(max(0, config.lr_decay_start - 1),
-                                                config.n_epochs,
-                                                config.lr_step)],
+                                                 (config.init_epoch - 1) + config.n_epochs,
+                                                 config.lr_step)],
                     gamma=config.lr_gamma
                 )
 
-                for _ in range(config.init_epoch):
+                for _ in range(config.init_epoch - 1):
                     lr_scheduler.step()
             else:
                 lr_scheduler = None
