@@ -38,6 +38,7 @@ class MultiHead(nn.Module):
         self.hidden_size = hidden_size
         self.n_splits = n_splits
 
+        # Note that we don't have to declare each linear layer, separately.
         self.Q_linear = nn.Linear(hidden_size, hidden_size, bias=False)
         self.K_linear = nn.Linear(hidden_size, hidden_size, bias=False)
         self.V_linear = nn.Linear(hidden_size, hidden_size, bias=False)
@@ -56,6 +57,8 @@ class MultiHead(nn.Module):
         # |QW_i| = (batch_size, m, hidden_size / n_splits)
         # |KW_i| = |VW_i| = (batch_size, n, hidden_size / n_splits)
 
+        # By concatenating splited linear transformed results,
+        # we can remove sequential operations, like mini-batch parallel operations.
         QWs = torch.cat(QWs, dim=0)
         KWs = torch.cat(KWs, dim=0)
         VWs = torch.cat(VWs, dim=0)
@@ -72,6 +75,8 @@ class MultiHead(nn.Module):
             dk=self.hidden_size // self.n_splits,
         )
         # |c| = (batch_size * n_splits, m, hidden_size / n_splits)
+
+        # We need to restore temporal mini-batchfied multi-head attention results.
         c = c.split(Q.size(0), dim=0)
         # |c_i| = (batch_size, m, hidden_size / n_splits)
         c = self.linear(torch.cat(c, dim=-1))
@@ -132,7 +137,9 @@ class DecoderBlock(nn.Module):
         self.fc_norm = nn.LayerNorm(hidden_size)
         self.fc_dropout = nn.Dropout(dropout_p)
 
-    def forward(self, x, KV, mask, prev):
+    def forward(self, x, key_and_value, mask, prev):
+        # In case of inference, we don't have to repeat same feed-forward operations.
+        # Thus, we save previous feed-forward results, including intermediate results.
         if prev is not None:
             # |x| = (batch_size, m=1, hidden_size)
             # |prev| = (batch_size, m', hidden_size)
@@ -148,8 +155,7 @@ class DecoderBlock(nn.Module):
 
             fwd_mask = torch.triu(x.new_ones((m, m)), diagonal=1).byte()
             # |fwd_mask| = (m, m)
-            fwd_mask = fwd_mask.unsqueeze(0).expand(batch_size,
-                                                    *fwd_mask.size())
+            fwd_mask = fwd_mask.unsqueeze(0).expand(batch_size, *fwd_mask.size())
             # |fwd_mask| = (batch_size, m, m)
 
             z = self.masked_attn_norm(x + self.masked_attn_dropout(
@@ -157,23 +163,27 @@ class DecoderBlock(nn.Module):
             ))
             # |z| = (batch_size, m, hidden_size)
 
-        # |KV| = (batch_size, n, hidden_size)
+        # |key_and_value| = (batch_size, n, hidden_size)
         # |mask| = (batch_size, m, n)
         z = self.attn_norm(z + self.attn_dropout(self.attn(Q=z,
-                                                           K=KV,
-                                                           V=KV,
+                                                           K=key_and_value,
+                                                           V=key_and_value,
                                                            mask=mask)))
         # |z| = (batch_size, m, hidden_size)
 
         z = self.fc_norm(z + self.fc_dropout(self.fc(z)))
         # |z| = (batch_size, m, hidden_size)
 
-        return z, KV, mask, prev
+        return z, key_and_value, mask, prev
 
 
 class MySequential(nn.Sequential):
 
     def forward(self, *x):
+        # nn.Sequential class does not provide multiple input arguments and returns.
+        # Thus, we need to define new class to solve this issue.
+        # Note that each block has same function interface.
+
         for module in self._modules.values():
             x = module(*x)
 
@@ -233,10 +243,10 @@ class Transformer(nn.Module):
         enc = x.new_zeros(x.shape[1:])
         # |enc| = (n, hidden_size)
         pos = init_pos + torch.arange(0, length, device=x.device).unsqueeze(-1)
-        dim = torch.pow(
-            10000.,
-            torch.arange(0, hidden_size // 2, device=x.device).div(hidden_size)
-        ).unsqueeze(0)
+        dim = (10000.**torch.arange(0,
+                                    hidden_size // 2,
+                                    device=x.device
+                                    ).div(hidden_size)).unsqueeze(0)
         # |pos| = (n, 1)
         # |dim| = (1, hidden_size // 2)
 
@@ -282,8 +292,8 @@ class Transformer(nn.Module):
         # |mask| = (batch_size, n)
         x = x[0]
 
-        mask_enc = torch.stack([mask for _ in range(x.size(1))], dim=1)
-        mask_dec = torch.stack([mask for _ in range(y.size(1))], dim=1)
+        mask_enc = mask.unsqueeze(1).expand(mask.size(0), x.size(1), mask.size(-1))
+        mask_enc = mask.unsqueeze(1).expand(mask.size(0), y.size(1), mask.size(-1))
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, m, n)
 
@@ -308,7 +318,7 @@ class Transformer(nn.Module):
         # |mask| = (batch_size, n)
         x = x[0]
 
-        mask_enc = torch.stack([mask for _ in range(x.size(1))], dim=1)
+        mask_enc = mask.unsqueeze(1).expand(mask.size(0), x.size(1), mask.size(-1))
         mask_dec = mask.unsqueeze(1)
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, 1, n)
@@ -338,17 +348,17 @@ class Transformer(nn.Module):
             else:
                 prevs[0] = torch.cat([prevs[0], h_t], dim=1)
 
-            for i, block in enumerate(self.decoder._modules.values()):
-                prev = prevs[i]
+            for layer_idx, block in enumerate(self.decoder._modules.values()):
+                prev = prevs[layer_idx]
                 # |prev| = (batch_size, m, hidden_size)
 
                 h_t, _, _, _ = block(h_t, z, mask_dec, prev)
                 # |h_t| = (batch_size, 1, hidden_size)
 
-                if prevs[i + 1] is None:
-                    prevs[i + 1] = h_t
+                if prevs[layer_idx + 1] is None:
+                    prevs[layer_idx + 1] = h_t
                 else:
-                    prevs[i + 1] = torch.cat([prevs[i + 1], h_t], dim=1)
+                    prevs[layer_idx + 1] = torch.cat([prevs[layer_idx + 1], h_t], dim=1)
 
             y_hat_t = self.softmax(self.generator(h_t))
             # |y_hat_t| = (batch_size, 1, output_size)
@@ -384,7 +394,7 @@ class Transformer(nn.Module):
         # |mask| = (batch_size, n)
         x = x[0]
 
-        mask_enc = torch.stack([mask for _ in range(x.size(1))], dim=1)
+        mask_enc = mask.unsqueeze(1).expand(mask.size(0), x.size(1), mask.size(-1))
         mask_dec = mask.unsqueeze(1)
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, 1, n)
@@ -445,17 +455,20 @@ class Transformer(nn.Module):
             else:
                 fab_prevs[0] = torch.cat([fab_prevs[0], h_t], dim=1)
 
-            for i, block in enumerate(self.decoder._modules.values()):
-                prev = fab_prevs[i]
+            for layer_idx, block in enumerate(self.decoder._modules.values()):
+                prev = fab_prevs[layer_idx]
                 # |prev| = (current_batch_size, m, hidden_size)
 
                 h_t, _, _, _ = block(h_t, fab_z, fab_mask, prev)
                 # |h_t| = (current_batch_size, 1, hidden_size)
 
-                if fab_prevs[i + 1] is None:
-                    fab_prevs[i + 1] = h_t
+                if fab_prevs[layer_idx + 1] is None:
+                    fab_prevs[layer_idx + 1] = h_t
                 else:
-                    fab_prevs[i + 1] = torch.cat([fab_prevs[i + 1], h_t], dim=1)
+                    fab_prevs[layer_idx + 1] = torch.cat(
+                        [fab_prevs[layer_idx + 1], h_t],
+                        dim=1,
+                    )
 
             y_hat_t = self.softmax(self.generator(h_t))
             # |y_hat_t| = (batch_size, 1, output_size)
