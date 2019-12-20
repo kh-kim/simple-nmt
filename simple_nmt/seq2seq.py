@@ -461,6 +461,9 @@ class Seq2Seq(nn.Module):
             # |y_hat| = (current_batch_size, 1, output_size)
 
             # separate the result for each sample.
+            # fab_hidden[:, from_index:to_index, :] = (n_layers, beam_size, hidden_size)
+            # fab_cell[:, from_index:to_index, :] = (n_layers, beam_size, hidden_size)
+            # fab_h_t_tilde[from_index:to_index] = (beam_size, 1, hidden_size)
             cnt = 0
             for space in spaces:
                 if space.is_done() == 0:
