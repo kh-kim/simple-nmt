@@ -27,8 +27,10 @@ class Attention(nn.Module):
         # |weight| = (batch_size, length)
         if mask is not None:
             # Set each weight as -inf, if the mask value equals to 1.
-            # Since the softmax operation makes -inf to 0, masked weights would be set to 0 after softmax operation.
-            # Thus, if the sample is shorter than other samples in mini-batch, the weight for empty time-step would be set to 0.
+            # Since the softmax operation makes -inf to 0,
+            # masked weights would be set to 0 after softmax operation.
+            # Thus, if the sample is shorter than other samples in mini-batch,
+            # the weight for empty time-step would be set to 0.
             weight.masked_fill_(mask, -float('inf'))
         weight = self.softmax(weight)
 
@@ -44,7 +46,8 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         # Be aware of value of 'batch_first' parameter.
-        # Also, its hidden_size is half of original hidden_size, because it is bidirectional.
+        # Also, its hidden_size is half of original hidden_size,
+        # because it is bidirectional.
         self.rnn = nn.LSTM(word_vec_dim,
                            int(hidden_size / 2),
                            num_layers=n_layers,
@@ -61,7 +64,9 @@ class Encoder(nn.Module):
             x = pack(x, lengths.tolist(), batch_first=True)
 
             # Below is how pack_padded_sequence works.
-            # As you can see, PackedSequence object has information about mini-batch-wise information, not time-step-wise information.
+            # As you can see,
+            # PackedSequence object has information about mini-batch-wise information,
+            # not time-step-wise information.
             # 
             # a = [torch.tensor([1,2,3]), torch.tensor([3,4])]
             # b = torch.nn.utils.rnn.pad_sequence(a, batch_first=True)
@@ -217,7 +222,8 @@ class Seq2Seq(nn.Module):
         x_length = None
         if isinstance(src, tuple):
             x, x_length = src
-            # Based on the length information, gererate mask to prevent that shorter sample has wasted attention.
+            # Based on the length information, gererate mask to prevent that
+            # shorter sample has wasted attention.
             mask = self.generate_mask(x, x_length)
             # |mask| = (batch_size, length)
         else:
@@ -236,7 +242,8 @@ class Seq2Seq(nn.Module):
         # |h_0_tgt| = (n_layers * 2, batch_size, hidden_size / 2)
 
         # Merge bidirectional to uni-directional
-        # We need to convert size from (n_layers * 2, batch_size, hidden_size / 2) to (n_layers, batch_size, hidden_size).
+        # We need to convert size from (n_layers * 2, batch_size, hidden_size / 2)
+        # to (n_layers, batch_size, hidden_size).
         # Thus, the converting operation will not working with just 'view' method.
         h_0_tgt, c_0_tgt = h_0_tgt
         h_0_tgt = h_0_tgt.transpose(0, 1).contiguous().view(batch_size,
@@ -263,9 +270,12 @@ class Seq2Seq(nn.Module):
         decoder_hidden = h_0_tgt
         # Run decoder until the end of the time-step.
         for t in range(tgt.size(1)):
-            # Teacher Forcing: take each input from training set, not from the last time-step's output.
-            # Because of Teacher Forcing, training procedure and inference procedure becomes different.
-            # Of course, because of sequential running in decoder, this causes severe bottle-neck.
+            # Teacher Forcing: take each input from training set,
+            # not from the last time-step's output.
+            # Because of Teacher Forcing,
+            # training procedure and inference procedure becomes different.
+            # Of course, because of sequential running in decoder,
+            # this causes severe bottle-neck.
             emb_t = emb_tgt[:, t, :].unsqueeze(1)
             # |emb_t| = (batch_size, 1, word_vec_dim)
             # |h_t_tilde| = (batch_size, 1, hidden_size)
@@ -324,9 +334,11 @@ class Seq2Seq(nn.Module):
         decoder_hidden = h_0_tgt
         h_t_tilde, y_hats, indice = None, [], []
         
-        # Repeat a loop while sum of 'is_undone' flag is bigger than 0, or current time-step is smaller than maximum length.
+        # Repeat a loop while sum of 'is_undone' flag is bigger than 0,
+        # or current time-step is smaller than maximum length.
         while is_undone.sum() > 0 and len(indice) < max_length:
-            # Unlike training procedure, take the last time-step's output during the inference.
+            # Unlike training procedure,
+            # take the last time-step's output during the inference.
             emb_t = self.emb_dec(y)
             # |emb_t| = (batch_size, 1, word_vec_dim)
 
@@ -361,7 +373,13 @@ class Seq2Seq(nn.Module):
 
         return y_hats, indice
 
-    def batch_beam_search(self, src, beam_size=5, max_length=255, n_best=1, length_penalty=.2):
+    def batch_beam_search(self,
+                          src,
+                          beam_size=5,
+                          max_length=255,
+                          n_best=1,
+                          length_penalty=.2
+                          ):
         mask, x_length = None, None
 
         if isinstance(src, tuple):
@@ -401,20 +419,23 @@ class Seq2Seq(nn.Module):
         done_cnt = [space.is_done() for space in spaces]
 
         length = 0
-        # Run loop while sum of 'done_cnt' is smaller than batch_size, or length is still smaller than max_length.
+        # Run loop while sum of 'done_cnt' is smaller than batch_size, 
+        # or length is still smaller than max_length.
         while sum(done_cnt) < batch_size and length <= max_length:
             # current_batch_size = sum(done_cnt) * beam_size
 
             # Initialize fabricated variables.
             # As far as batch-beam-search is running, 
-            # temporary batch-size for fabricated mini-batch is 'beam_size'-times bigger than original batch_size.
+            # temporary batch-size for fabricated mini-batch is 
+            # 'beam_size'-times bigger than original batch_size.
             fab_input, fab_hidden, fab_cell, fab_h_t_tilde = [], [], [], []
             fab_h_src, fab_mask = [], []
             
             # Build fabricated mini-batch in non-parallel way.
             # This may cause a bottle-neck.
             for i, space in enumerate(spaces):
-                if space.is_done() == 0:  # Batchfy only if the inference for the sample is still not finished.
+                # Batchify if the inference for the sample is still not finished.
+                if space.is_done() == 0:
                     y_hat_, hidden_, cell_, h_t_tilde_ = space.get_batch()
 
                     fab_input += [y_hat_]

@@ -58,7 +58,8 @@ class MultiHead(nn.Module):
         # |KW_i| = |VW_i| = (batch_size, n, hidden_size / n_splits)
 
         # By concatenating splited linear transformed results,
-        # we can remove sequential operations, like mini-batch parallel operations.
+        # we can remove sequential operations,
+        # like mini-batch parallel operations.
         QWs = torch.cat(QWs, dim=0)
         KWs = torch.cat(KWs, dim=0)
         VWs = torch.cat(VWs, dim=0)
@@ -87,7 +88,9 @@ class MultiHead(nn.Module):
 
 class EncoderBlock(nn.Module):
 
-    def __init__(self, hidden_size, n_splits, dropout_p=.1, use_leaky_relu=False):
+    def __init__(self, hidden_size, n_splits,
+                 dropout_p=.1, use_leaky_relu=False
+                 ):
         super().__init__()
 
         self.attn = MultiHead(hidden_size, n_splits)
@@ -118,7 +121,9 @@ class EncoderBlock(nn.Module):
 
 class DecoderBlock(nn.Module):
 
-    def __init__(self, hidden_size, n_splits, dropout_p=.1, use_leaky_relu=False):
+    def __init__(self, hidden_size, n_splits,
+                 dropout_p=.1, use_leaky_relu=False
+                 ):
         super().__init__()
 
         self.masked_attn = MultiHead(hidden_size, n_splits)
@@ -386,7 +391,13 @@ class Transformer(nn.Module):
 
         return y_hats, indice
 
-    def batch_beam_search(self, x, beam_size=5, max_length=255, n_best=1, length_penalty=.2):
+    def batch_beam_search(self,
+                          x,
+                          beam_size=5,
+                          max_length=255,
+                          n_best=1,
+                          length_penalty=.2
+                          ):
         # |x[0]| = (batch_size, n)
         batch_size = x[0].size(0)
 
