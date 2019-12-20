@@ -473,6 +473,7 @@ class Transformer(nn.Module):
             y_hat_t = self.softmax(self.generator(h_t))
             # |y_hat_t| = (batch_size, 1, output_size)
 
+            # |fab_prevs[i][from_index:to_index]| = (beam_size, length, hidden_size)
             cnt = 0
             for space in spaces:
                 if space.is_done() == 0:

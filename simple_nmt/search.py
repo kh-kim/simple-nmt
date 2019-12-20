@@ -86,6 +86,7 @@ class SingleBeamSearchSpace():
         #     |hidden| = |cell| = (n_layers, beam_size, hidden_size)
         #     |h_t_tilde| = (beam_size, 1, hidden_size)
         # else:
+        #     |prev_state_i| = (beam_size, length, hidden_size)
         output_size = y_hat.size(-1)
 
         self.current_time_step += 1
@@ -121,6 +122,13 @@ class SingleBeamSearchSpace():
         # Calculate a number of finished beams.
         self.done_cnt += self.masks[-1].float().sum()
 
+        # In beam search procedure, we only need to memorize latest status.
+        # For seq2seq, it would be lastest hidden and cell state, and h_t_tilde.
+        # The problem is hidden(or cell) state and h_t_tilde has different dimension order.
+        # In other words, a dimension for batch index is different.
+        # Therefore self.batch_dims stores the dimension index for batch index.
+        # For transformer, lastest status is each layer's decoder output from the biginning.
+        # Unlike seq2seq, transformer has to memorize every previous output for attention operation.
         for k, v in prev_status:
             self.prev_status[k] = torch.index_select(
                 v,
