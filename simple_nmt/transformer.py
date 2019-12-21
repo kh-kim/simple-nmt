@@ -298,7 +298,7 @@ class Transformer(nn.Module):
         x = x[0]
 
         mask_enc = mask.unsqueeze(1).expand(mask.size(0), x.size(1), mask.size(-1))
-        mask_enc = mask.unsqueeze(1).expand(mask.size(0), y.size(1), mask.size(-1))
+        mask_dec = mask.unsqueeze(1).expand(mask.size(0), y.size(1), mask.size(-1))
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, m, n)
 
