@@ -459,8 +459,8 @@ def main(config, model_weight=None, opt_weight=None):
         if config.rl_n_epochs > 0:
             optimizer = optim.SGD(model.parameters(), lr=config.rl_lr)
 
-            from simple_nmt.rl_trainer import MinimumRiskTrainer
-            mrt_trainer = MinimumRiskTrainer(config)
+            from simple_nmt.rl_trainer import MinimumRiskTrainingEngine
+            mrt_trainer = SingleTrainer(MinimumRiskTrainingEngine, config)
 
             mrt_trainer.train(
                 model,

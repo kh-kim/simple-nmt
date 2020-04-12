@@ -11,10 +11,10 @@ VERBOSE_EPOCH_WISE = 1
 VERBOSE_BATCH_WISE = 2
 
 
-from simple_nmt.trainer import MaximumLikelihoodEstimationTrainer
+from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
 
 
-class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
+class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
     @staticmethod
     def get_reward(y_hat, y, n_gram=6):
@@ -97,7 +97,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         return log_prob
 
     @staticmethod
-    def step(engine, mini_batch):
+    def train(engine, mini_batch):
         from utils import get_grad_norm, get_parameter_norm
 
         # You have to reset the gradients of all model parameters
@@ -119,7 +119,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
             max_length=engine.config.max_length
         )
         # Based on the result of sampling, get reward.
-        actor_reward = MinimumRiskTrainer.get_reward(
+        actor_reward = MinimumRiskTrainingEngine.get_reward(
             indice,
             y,
             n_gram=engine.config.rl_n_gram
@@ -139,7 +139,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
                     max_length=engine.config.max_length,
                 )
                 baseline += [
-                    MinimumRiskTrainer.get_reward(
+                    MinimumRiskTrainingEngine.get_reward(
                         sampled_indice,
                         y,
                         n_gram=engine.config.rl_n_gram,
@@ -155,7 +155,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
         # |final_reward| = (batch_size)
 
         # calculate gradients with back-propagation
-        MinimumRiskTrainer.get_gradient(
+        MinimumRiskTrainingEngine.get_gradient(
             y_hat,
             indice,
             engine.crit,
@@ -200,7 +200,7 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
             )
             # |y_hat| = (batch_size, length, output_size)
             # |indice| = (batch_size, length)
-            reward = MinimumRiskTrainer.get_reward(
+            reward = MinimumRiskTrainingEngine.get_reward(
                 indice,
                 y,
                 n_gram=engine.config.rl_n_gram,
@@ -259,8 +259,6 @@ class MinimumRiskTrainer(MaximumLikelihoodEstimationTrainer):
 
     @staticmethod
     def check_best(engine):
-        from copy import deepcopy
-
         loss = -float(engine.state.metrics['BLEU'])
         if loss <= engine.best_loss:
             engine.best_loss = loss
