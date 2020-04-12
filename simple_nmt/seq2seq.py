@@ -194,7 +194,7 @@ class Seq2Seq(nn.Module):
                 # set every value in mask to be 0.
                 mask += [x.new_ones(1, l).zero_()]
 
-        mask = torch.cat(mask, dim=0).byte()
+        mask = torch.cat(mask, dim=0).bool()
 
         return mask
 
@@ -360,7 +360,7 @@ class Seq2Seq(nn.Module):
                 # Take a random sampling based on the multinoulli distribution.
                 y = torch.multinomial(y_hat.exp().view(batch_size, -1), 1)
             # Put PAD if the sample is done.
-            y = y.masked_fill_((1. - is_undone).byte(), data_loader.PAD)
+            y = y.masked_fill_((1. - is_undone).bool(), data_loader.PAD)
             is_undone = is_undone * torch.ne(y, data_loader.EOS).float()
             # |y| = (batch_size, 1)
             # |is_undone| = (batch_size, 1)

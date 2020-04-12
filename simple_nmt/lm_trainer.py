@@ -9,14 +9,20 @@ VERBOSE_SILENT = 0
 VERBOSE_EPOCH_WISE = 1
 VERBOSE_BATCH_WISE = 2
 
+from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
 
-from simple_nmt.trainer import MaximumLikelihoodEstimationTrainer
 
+class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
 
-class LanguageModelTrainer(MaximumLikelihoodEstimationTrainer):
+    def __init__(self, func, model, crit, optimizer, lr_scheduler, is_src_target, config):
+        self.is_src_target = is_src_target
+
+        super().__init__(func, model, crit, optimizer, lr_scheduler, config)
+
+        self.best_model = None
 
     @staticmethod
-    def step(engine, mini_batch):
+    def train(engine, mini_batch):
         from utils import get_grad_norm, get_parameter_norm
 
         # You have to reset the gradients of all model parameters
@@ -85,6 +91,12 @@ class LanguageModelTrainer(MaximumLikelihoodEstimationTrainer):
     def save_model(engine, train_engine, config, src_vocab, tgt_vocab):
         pass
 
+
+class LanguageModelTrainer():
+
+    def __init__(self, config):
+        self.config = config
+
     def train(
         self,
         model,
@@ -103,20 +115,26 @@ class LanguageModelTrainer(MaximumLikelihoodEstimationTrainer):
         else:
             raise NotImplementedError('You cannot assign None both vocab.')
 
-        trainer = Engine(self.step)
-        trainer.config = self.config
-        trainer.model, trainer.crit = model, crit
-        trainer.optimizer, trainer.lr_scheduler = optimizer, lr_scheduler
-        trainer.epoch_idx = 0
-        trainer.is_src_target = is_src_target
+        trainer = LanguageModelTrainingEngine(
+            LanguageModelTrainingEngine.train,
+            model,
+            crit,
+            optimizer,
+            lr_scheduler,
+            is_src_target,
+            self.config,
+        )
+        evaluator = LanguageModelTrainingEngine(
+            LanguageModelTrainingEngine.validate,
+            model,
+            crit,
+            optimizer=None,
+            lr_scheduler=None,
+            is_src_target=is_src_target,
+            config=self.config,
+        )
 
-        evaluator = Engine(self.validate)
-        evaluator.config = self.config
-        evaluator.model, evaluator.crit = model, crit
-        evaluator.best_loss = np.inf
-        evaluator.is_src_target = is_src_target
-
-        self.attach(trainer, evaluator, verbose=self.config.verbose)
+        LanguageModelTrainingEngine.attach(trainer, evaluator, verbose=self.config.verbose)
 
         def run_validation(engine, evaluator, valid_loader):
             evaluator.run(valid_loader, max_epochs=1)
@@ -128,11 +146,11 @@ class LanguageModelTrainer(MaximumLikelihoodEstimationTrainer):
             Events.EPOCH_COMPLETED, run_validation, evaluator, valid_loader
         )
         evaluator.add_event_handler(
-            Events.EPOCH_COMPLETED, self.check_best
+            Events.EPOCH_COMPLETED, LanguageModelTrainingEngine.check_best
         )
         evaluator.add_event_handler(
             Events.EPOCH_COMPLETED,
-            self.save_model,
+            LanguageModelTrainingEngine.save_model,
             trainer,
             self.config,
             src_vocab,
