@@ -12,10 +12,20 @@ VERBOSE_BATCH_WISE = 2
 X2Y, Y2X = 0, 1
 
 
-class DualSupervisedTrainer():
+class DualSupervisedTrainingEngine(Engine):
 
-    def __init__(self, config):
+    def __init__(self, func, models, crits, optimizers, lr_schedulers, language_models, config):
+        self.models = models
+        self.crits = crits
+        self.optimizers = optimizers
+        self.lr_schedulers = lr_schedulers
+        self.language_models = language_models
         self.config = config
+
+        super().__init__(func)
+
+        self.best_x2y = np.inf
+        self.best_y2x = np.inf
 
     @staticmethod
     def _reordering(x, y, l):
@@ -95,7 +105,7 @@ class DualSupervisedTrainer():
         )
 
     @staticmethod
-    def step(engine, mini_batch):
+    def train(engine, mini_batch):
         from utils import get_grad_norm, get_parameter_norm
 
         for language_model, model, optimizer in zip(engine.language_models, engine.models, engine.optimizers):
@@ -116,7 +126,7 @@ class DualSupervisedTrainer():
         #Y2X
         # Since encoder in seq2seq takes packed_sequence instance,
         # we need to re-sort if we use reversed src and tgt.
-        x, y, restore_indice = DualSupervisedTrainer._reordering(
+        x, y, restore_indice = DualSupervisedTrainingEngine._reordering(
             mini_batch.src[0][:, :-1],
             mini_batch.tgt[0][:, 1:-1],
             mini_batch.tgt[1] - 2,
@@ -131,7 +141,7 @@ class DualSupervisedTrainer():
             # |p_hat_x| = |x_hat|
 
         x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
-        loss_x2y, loss_y2x, dual_loss = DualSupervisedTrainer._get_loss(
+        loss_x2y, loss_y2x, dual_loss = DualSupervisedTrainingEngine._get_loss(
             x, y,
             x_hat, y_hat,
             engine.crits,
@@ -179,7 +189,7 @@ class DualSupervisedTrainer():
             # |y_hat| = (batch_size, m, y_vocab_size)
 
             # Y2X
-            x, y, restore_indice = DualSupervisedTrainer._reordering(
+            x, y, restore_indice = DualSupervisedTrainingEngine._reordering(
                 mini_batch.src[0][:, :-1],
                 mini_batch.tgt[0][:, 1:-1],
                 mini_batch.tgt[1] - 2,
@@ -316,6 +326,12 @@ class DualSupervisedTrainer():
             }, model_fn
         )
 
+
+class DualSupervisedTrainer():
+
+    def __init__(self, config):
+        self.config = config
+
     def train(
         self,
         models, language_models,
@@ -325,18 +341,30 @@ class DualSupervisedTrainer():
         n_epochs,
         lr_schedulers=None
     ):
-        trainer = Engine(self.step)
-        trainer.config = self.config
-        trainer.models, trainer.crits = models, crits
-        trainer.optimizers, trainer.lr_schedulers = optimizers, lr_schedulers
-        trainer.language_models = language_models
+        trainer = DualSupervisedTrainingEngine(
+            DualSupervisedTrainingEngine.train,
+            models,
+            crits,
+            optimizers,
+            lr_schedulers,
+            language_models,
+            self.config,
+        )
+        evaluator = DualSupervisedTrainingEngine(
+            DualSupervisedTrainingEngine.validate,
+            models,
+            crits,
+            optimizers=None,
+            lr_schedulers=None,
+            language_models=language_models,
+            config=self.config,
+        )
 
-        evaluator = Engine(self.validate)
-        evaluator.config = self.config
-        evaluator.models, evaluator.crits = models, crits
-        evaluator.best_x2y, evaluator.best_y2x = np.inf, np.inf
-
-        self.attach(trainer, evaluator, verbose=self.config.verbose)
+        DualSupervisedTrainingEngine.attach(
+            trainer,
+            evaluator,
+            verbose=self.config.verbose
+        )
 
         def run_validation(engine, evaluator, valid_loader):
             evaluator.run(valid_loader, max_epochs=1)
@@ -349,11 +377,11 @@ class DualSupervisedTrainer():
             Events.EPOCH_COMPLETED, run_validation, evaluator, valid_loader
         )
         evaluator.add_event_handler(
-            Events.EPOCH_COMPLETED, self.check_best
+            Events.EPOCH_COMPLETED, DualSupervisedTrainingEngine.check_best
         )
         evaluator.add_event_handler(
             Events.EPOCH_COMPLETED,
-            self.save_model,
+            DualSupervisedTrainingEngine.save_model,
             trainer,
             self.config,
             vocabs,
