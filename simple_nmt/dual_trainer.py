@@ -330,7 +330,6 @@ class DualSupervisedTrainer():
         trainer.models, trainer.crits = models, crits
         trainer.optimizers, trainer.lr_schedulers = optimizers, lr_schedulers
         trainer.language_models = language_models
-        trainer.epoch_idx = 0
 
         evaluator = Engine(self.validate)
         evaluator.config = self.config

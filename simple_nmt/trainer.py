@@ -175,7 +175,6 @@ class MaximumLikelihoodEstimationTrainer():
         trainer.config = self.config
         trainer.model, trainer.crit = model, crit
         trainer.optimizer, trainer.lr_scheduler = optimizer, lr_scheduler
-        trainer.epoch_idx = 0
 
         evaluator = Engine(self.validate)
         evaluator.config = self.config
