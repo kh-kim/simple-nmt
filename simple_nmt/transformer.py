@@ -153,7 +153,7 @@ class DecoderBlock(nn.Module):
             batch_size = x.size(0)
             m = x.size(1)
 
-            fwd_mask = torch.triu(x.new_ones((m, m)), diagonal=1).byte()
+            fwd_mask = torch.triu(x.new_ones((m, m)), diagonal=1).bool()
             # |fwd_mask| = (m, m)
             fwd_mask = fwd_mask.unsqueeze(0).expand(batch_size, *fwd_mask.size())
             # |fwd_mask| = (batch_size, m, m)
@@ -279,7 +279,7 @@ class Transformer(nn.Module):
                 # set every value in mask to be 0.
                 mask += [x.new_ones(1, l).zero_()]
 
-        mask = torch.cat(mask, dim=0).byte()
+        mask = torch.cat(mask, dim=0).bool()
         # |mask| = (batch_size, max_length)
 
         return mask
@@ -293,7 +293,7 @@ class Transformer(nn.Module):
         x = x[0]
 
         mask_enc = mask.unsqueeze(1).expand(mask.size(0), x.size(1), mask.size(-1))
-        mask_enc = mask.unsqueeze(1).expand(mask.size(0), y.size(1), mask.size(-1))
+        mask_dec = mask.unsqueeze(1).expand(mask.size(0), y.size(1), mask.size(-1))
         # |mask_enc| = (batch_size, n, n)
         # |mask_dec| = (batch_size, m, n)
 
@@ -371,7 +371,7 @@ class Transformer(nn.Module):
                 y_t_1 = torch.multinomial(y_hat_t.exp().view(x.size(0), -1), 1)
             # Put PAD if the sample is done.
             y_t_1 = y_t_1.masked_fill_(
-                (1. - is_undone).byte(),
+                (1. - is_undone).bool(),
                 data_loader.PAD,
             )
             is_undone = is_undone * torch.ne(y_t_1, data_loader.EOS).float()
