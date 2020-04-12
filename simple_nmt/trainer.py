@@ -10,13 +10,21 @@ VERBOSE_EPOCH_WISE = 1
 VERBOSE_BATCH_WISE = 2
 
 
-class MaximumLikelihoodEstimationTrainer():
+class MaximumLikelihoodEstimationEngine(Engine):
 
-    def __init__(self, config):
+    def __init__(self, func, model, crit, optimizer, lr_scheduler, config):
+        self.model = model
+        self.crit = crit
+        self.optimizer = optimizer
+        self.lr_scheduler = lr_scheduler
         self.config = config
 
+        super().__init__(func)
+
+        self.best_loss = np.inf
+
     @staticmethod
-    def step(engine, mini_batch):
+    def train(engine, mini_batch):
         from utils import get_grad_norm, get_parameter_norm
 
         # You have to reset the gradients of all model parameters
@@ -127,8 +135,6 @@ class MaximumLikelihoodEstimationTrainer():
 
     @staticmethod
     def check_best(engine):
-        from copy import deepcopy
-
         loss = float(engine.state.metrics['loss'])
         if loss <= engine.best_loss:
             engine.best_loss = loss
@@ -162,6 +168,13 @@ class MaximumLikelihoodEstimationTrainer():
                 'tgt_vocab': tgt_vocab,
             }, model_fn
         )
+    
+
+class SingleTrainer():
+
+    def __init__(self, target_engine_class, config):
+        self.target_engine_class = target_engine_class
+        self.config = config
 
     def train(
         self,
@@ -171,17 +184,24 @@ class MaximumLikelihoodEstimationTrainer():
         n_epochs,
         lr_scheduler=None
     ):
-        trainer = Engine(self.step)
-        trainer.config = self.config
-        trainer.model, trainer.crit = model, crit
-        trainer.optimizer, trainer.lr_scheduler = optimizer, lr_scheduler
+        trainer = self.target_engine_class(
+            self.target_engine_class.train,
+            model,
+            crit,
+            optimizer,
+            lr_scheduler,
+            self.config
+        )
+        evaluator = self.target_engine_class(
+            self.target_engine_class.validate,
+            model,
+            crit,
+            optimizer=None,
+            lr_scheduler=None,
+            config=self.config
+        )
 
-        evaluator = Engine(self.validate)
-        evaluator.config = self.config
-        evaluator.model, evaluator.crit = model, crit
-        evaluator.best_loss = np.inf
-
-        self.attach(trainer, evaluator, verbose=self.config.verbose)
+        self.target_engine_class.attach(trainer, evaluator, verbose=self.config.verbose)
 
         def run_validation(engine, evaluator, valid_loader):
             evaluator.run(valid_loader, max_epochs=1)
@@ -193,11 +213,11 @@ class MaximumLikelihoodEstimationTrainer():
             Events.EPOCH_COMPLETED, run_validation, evaluator, valid_loader
         )
         evaluator.add_event_handler(
-            Events.EPOCH_COMPLETED, self.check_best
+            Events.EPOCH_COMPLETED, self.target_engine_class.check_best
         )
         evaluator.add_event_handler(
             Events.EPOCH_COMPLETED,
-            self.save_model,
+            self.target_engine_class.save_model,
             trainer,
             self.config,
             src_vocab,

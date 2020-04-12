@@ -362,7 +362,9 @@ def main(config, model_weight=None, opt_weight=None):
             dsl=config.dsl
         )
 
-        from simple_nmt.trainer import MaximumLikelihoodEstimationTrainer as MLETrainer
+        from simple_nmt.trainer import SingleTrainer
+        from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
+
         # Encoder's embedding layer input size
         input_size = len(loader.src.vocab)
         # Decoder's embedding layer input size and Generator's softmax layer output size
@@ -441,7 +443,7 @@ def main(config, model_weight=None, opt_weight=None):
         print(optimizer)
 
         # Start training. This function maybe equivalant to 'fit' function in Keras.
-        mle_trainer = MLETrainer(config)
+        mle_trainer = SingleTrainer(MaximumLikelihoodEstimationEngine, config)
         mle_trainer.train(
             model,
             crit,
