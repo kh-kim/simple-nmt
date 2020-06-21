@@ -3,7 +3,12 @@ import torch
 
 from torch import optim
 import torch.nn.utils as torch_utils
-from ignite.engine import Engine, Events
+
+from ignite.engine import Engine
+from ignite.engine import Events
+from ignite.metrics import RunningAverage
+from ignite.contrib.handlers.tqdm_logger import ProgressBar
+
 
 VERBOSE_SILENT = 0
 VERBOSE_EPOCH_WISE = 1
@@ -159,6 +164,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
 
         model_fn = '.'.join(model_fn)
 
+        # Unlike other tasks, we need to save current model, not best model.
         torch.save(
             {
                 'model': engine.model.state_dict(),
@@ -184,7 +190,7 @@ class SingleTrainer():
         n_epochs,
         lr_scheduler=None
     ):
-        trainer = self.target_engine_class(
+        train_engine = self.target_engine_class(
             self.target_engine_class.train,
             model,
             crit,
@@ -192,7 +198,7 @@ class SingleTrainer():
             lr_scheduler,
             self.config
         )
-        evaluator = self.target_engine_class(
+        validation_engine = self.target_engine_class(
             self.target_engine_class.validate,
             model,
             crit,
@@ -201,7 +207,7 @@ class SingleTrainer():
             config=self.config
         )
 
-        self.target_engine_class.attach(trainer, evaluator, verbose=self.config.verbose)
+        self.target_engine_class.attach(train_engine, validation_engine, verbose=self.config.verbose)
 
         def run_validation(engine, evaluator, valid_loader):
             evaluator.run(valid_loader, max_epochs=1)
@@ -209,21 +215,21 @@ class SingleTrainer():
             if engine.lr_scheduler is not None and not engine.config.use_noam_decay:
                 engine.lr_scheduler.step()
 
-        trainer.add_event_handler(
-            Events.EPOCH_COMPLETED, run_validation, evaluator, valid_loader
+        train_engine.add_event_handler(
+            Events.EPOCH_COMPLETED, run_validation, validation_engine, valid_loader
         )
-        evaluator.add_event_handler(
+        validation_engine.add_event_handler(
             Events.EPOCH_COMPLETED, self.target_engine_class.check_best
         )
-        evaluator.add_event_handler(
+        validation_engine.add_event_handler(
             Events.EPOCH_COMPLETED,
             self.target_engine_class.save_model,
-            trainer,
+            train_engine,
             self.config,
             src_vocab,
             tgt_vocab,
         )
 
-        trainer.run(train_loader, max_epochs=n_epochs)
+        train_engine.run(train_loader, max_epochs=n_epochs)
 
         return model
