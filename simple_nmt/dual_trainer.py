@@ -18,7 +18,16 @@ X2Y, Y2X = 0, 1
 
 class DualSupervisedTrainingEngine(Engine):
 
-    def __init__(self, func, models, crits, optimizers, lr_schedulers, language_models, config):
+    def __init__(
+        self,
+        func,
+        models,
+        crits,
+        optimizers,
+        lr_schedulers,
+        language_models,
+        config
+    ):
         self.models = models
         self.crits = crits
         self.optimizers = optimizers
@@ -112,7 +121,9 @@ class DualSupervisedTrainingEngine(Engine):
     def train(engine, mini_batch):
         from utils import get_grad_norm, get_parameter_norm
 
-        for language_model, model, optimizer in zip(engine.language_models, engine.models, engine.optimizers):
+        for language_model, model, optimizer in zip(engine.language_models,
+                                                    engine.models,
+                                                    engine.optimizers):
             language_model.eval()
             model.train()
             optimizer.zero_grad()
