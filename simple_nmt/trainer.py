@@ -50,9 +50,10 @@ class MaximumLikelihoodEstimationEngine(Engine):
         y_hat = engine.model(x, mini_batch.tgt[0][:, :-1])
         # |y_hat| = (batch_size, length, output_size)
 
-        loss = engine.crit(y_hat.contiguous().view(-1, y_hat.size(-1)),
-                           y.contiguous().view(-1)
-                           )
+        loss = engine.crit(
+            y_hat.contiguous().view(-1, y_hat.size(-1)),
+            y.contiguous().view(-1)
+        )
         loss.div(y.size(0)).backward()
         word_count = int(mini_batch.tgt[1].sum())
 
@@ -70,7 +71,11 @@ class MaximumLikelihoodEstimationEngine(Engine):
         if engine.config.use_noam_decay and engine.lr_scheduler is not None:
             engine.lr_scheduler.step()
 
-        return float(loss / word_count), p_norm, g_norm
+        return {
+            'loss': float(loss / word_count),
+            '|param|': p_norm,
+            '|g_param|': g_norm,
+        }
 
     @staticmethod
     def validate(engine, mini_batch):
@@ -90,21 +95,31 @@ class MaximumLikelihoodEstimationEngine(Engine):
             )
             word_count = int(mini_batch.tgt[1].sum())
 
-        return float(loss / word_count)
+        return {
+            'loss': float(loss / word_count),
+        }
 
     @staticmethod
-    def attach(trainer, evaluator, verbose=VERBOSE_BATCH_WISE):
-        from ignite.engine import Events
-        from ignite.metrics import RunningAverage
-        from ignite.contrib.handlers.tqdm_logger import ProgressBar
+    def attach(
+        train_engine, validation_engine,
+        training_metric_names = ['loss', '|param|', '|g_param|'],
+        validation_metric_names = ['loss', ],
+        verbose=VERBOSE_BATCH_WISE,
+    ):
+        # Attaching would be repaeted for serveral metrics.
+        # Thus, we can reduce the repeated codes by using this function.
+        def attach_running_average(engine, metric_name):
+            RunningAverage(output_transform=lambda x: x[metric_name]).attach(
+                engine,
+                metric_name,
+            )
 
-        RunningAverage(output_transform=lambda x: x[0]).attach(trainer, 'loss')
-        RunningAverage(output_transform=lambda x: x[1]).attach(trainer, '|param|')
-        RunningAverage(output_transform=lambda x: x[2]).attach(trainer, '|g_param|')
+        for metric_name in training_metric_names:
+            attach_running_average(train_engine, metric_name)
 
         if verbose >= VERBOSE_BATCH_WISE:
             pbar = ProgressBar(bar_format=None, ncols=120)
-            pbar.attach(trainer, ['|param|', '|g_param|', 'loss'])
+            pbar.attach(train_engine, training_metric_names)
 
         if verbose >= VERBOSE_EPOCH_WISE:
             @trainer.on(Events.EPOCH_COMPLETED)
@@ -121,16 +136,18 @@ class MaximumLikelihoodEstimationEngine(Engine):
                     np.exp(avg_loss),
                 ))
 
-        RunningAverage(output_transform=lambda x: x).attach(evaluator, 'loss')
+        for metric_name in validation_metric_names:
+            attach_running_average(validation_engine, metric_name)
 
         if verbose >= VERBOSE_BATCH_WISE:
             pbar = ProgressBar(bar_format=None, ncols=120)
-            pbar.attach(evaluator, ['loss'])
+            pbar.attach(validation_engine, validation_metric_names)
 
         if verbose >= VERBOSE_EPOCH_WISE:
             @evaluator.on(Events.EPOCH_COMPLETED)
             def print_valid_logs(engine):
                 avg_loss = engine.state.metrics['loss']
+
                 print('Validation - loss={:.4e} ppl={:.2f} best_loss={:.4e} best_ppl={:.2f}'.format(
                     avg_loss,
                     np.exp(avg_loss),

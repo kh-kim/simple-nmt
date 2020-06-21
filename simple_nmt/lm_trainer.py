@@ -57,7 +57,11 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
         # Take a step of gradient descent.
         engine.optimizer.step()
 
-        return float(loss / word_count), p_norm, g_norm
+        return {
+            'loss': float(loss / word_count),
+            '|param|': p_norm,
+            '|g_param|': g_norm,
+        }
 
     @staticmethod
     def validate(engine, mini_batch):
@@ -76,7 +80,9 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
                                ).sum()
             word_count = int(mini_batch.src[1].sum()) if engine.is_src_target else int(mini_batch.tgt[1].sum())
 
-        return float(loss / word_count)
+        return {
+            'loss': float(loss / word_count),
+        }
 
     @staticmethod
     def check_best(engine):
