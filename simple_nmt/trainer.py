@@ -122,7 +122,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
             pbar.attach(train_engine, training_metric_names)
 
         if verbose >= VERBOSE_EPOCH_WISE:
-            @trainer.on(Events.EPOCH_COMPLETED)
+            @train_engine.on(Events.EPOCH_COMPLETED)
             def print_train_logs(engine):
                 avg_p_norm = engine.state.metrics['|param|']
                 avg_g_norm = engine.state.metrics['|g_param|']
@@ -144,7 +144,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
             pbar.attach(validation_engine, validation_metric_names)
 
         if verbose >= VERBOSE_EPOCH_WISE:
-            @evaluator.on(Events.EPOCH_COMPLETED)
+            @validation_engine.on(Events.EPOCH_COMPLETED)
             def print_valid_logs(engine):
                 avg_loss = engine.state.metrics['loss']
 

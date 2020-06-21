@@ -276,7 +276,7 @@ class DualSupervisedTrainingEngine(Engine):
             pbar.attach(validation_engine, validation_metric_names)
 
         if verbose >= VERBOSE_EPOCH_WISE:
-            @evaluator.on(Events.EPOCH_COMPLETED)
+            @validation_engine.on(Events.EPOCH_COMPLETED)
             def print_valid_logs(engine):
                 avg_x2y = engine.state.metrics['x2y']
                 avg_y2x = engine.state.metrics['y2x']
