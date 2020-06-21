@@ -248,10 +248,9 @@ class Transformer(nn.Module):
         enc = x.new_zeros(x.shape[1:])
         # |enc| = (n, hidden_size)
         pos = init_pos + torch.arange(0, length, device=x.device).unsqueeze(-1)
-        dim = (10000.**torch.arange(0,
-                                    hidden_size // 2,
-                                    device=x.device
-                                    ).div(hidden_size)).unsqueeze(0)
+        dim = (
+            1e+4**torch.arange(0, hidden_size // 2, device=x.device).div(hidden_size)
+        ).unsqueeze(0)
         # |pos| = (n, 1)
         # |dim| = (1, hidden_size // 2)
 
@@ -391,13 +390,14 @@ class Transformer(nn.Module):
 
         return y_hats, indice
 
-    def batch_beam_search(self,
-                          x,
-                          beam_size=5,
-                          max_length=255,
-                          n_best=1,
-                          length_penalty=.2
-                          ):
+    def batch_beam_search(
+        self,
+        x,
+        beam_size=5,
+        max_length=255,
+        n_best=1,
+        length_penalty=.2
+    ):
         # |x[0]| = (batch_size, n)
         batch_size = x[0].size(0)
 

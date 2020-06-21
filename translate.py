@@ -7,8 +7,8 @@ import torch
 
 from data_loader import DataLoader
 import data_loader
-from simple_nmt.seq2seq import Seq2Seq
-from simple_nmt.transformer import Transformer
+from simple_nmt.models.seq2seq import Seq2Seq
+from simple_nmt.models.transformer import Transformer
 
 
 def define_argparser():
