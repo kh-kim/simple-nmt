@@ -3,7 +3,11 @@ import torch
 
 from torch import optim
 import torch.nn.utils as torch_utils
-from ignite.engine import Engine, Events
+
+from ignite.engine import Engine
+from ignite.engine import Events
+from ignite.metrics import RunningAverage
+from ignite.contrib.handlers.tqdm_logger import ProgressBar
 
 VERBOSE_SILENT = 0
 VERBOSE_EPOCH_WISE = 1
@@ -167,13 +171,13 @@ class DualSupervisedTrainingEngine(Engine):
             # Take a step of gradient descent.
             optimizer.step()
 
-        return (
-            float(loss_x2y / mini_batch.src[1].sum()),
-            float(loss_y2x / mini_batch.tgt[1].sum()),
-            float(dual_loss / x.size(0)),
-            p_norm,
-            g_norm,
-        )
+        return {
+            'x2y': float(loss_x2y / mini_batch.src[1].sum()),
+            'y2x': float(loss_y2x / mini_batch.tgt[1].sum()),
+            'reg': float(dual_loss / x.size(0)),
+            '|param|': p_norm,
+            '|g_param|': g_norm,
+        }
 
     @staticmethod
     def validate(engine, mini_batch):
@@ -207,26 +211,36 @@ class DualSupervisedTrainingEngine(Engine):
                 x.contiguous().view(-1)
             ).sum()
 
-        return float(loss_x2y / mini_batch.src[1].sum()), float(loss_y2x / mini_batch.tgt[1].sum())
+        return {
+            'x2y': float(loss_x2y / mini_batch.src[1].sum()),
+            'y2x': float(loss_y2x / mini_batch.tgt[1].sum()),
+        }
 
     @staticmethod
-    def attach(trainer, evaluator, verbose=VERBOSE_BATCH_WISE):
-        from ignite.engine import Events
-        from ignite.metrics import RunningAverage
-        from ignite.contrib.handlers.tqdm_logger import ProgressBar
+    def attach(
+        train_engine,
+        validation_engine,
+        training_metric_names = ['x2y', 'y2x', 'reg', '|param|', '|g_param|'],
+        validation_metric_names = ['x2y', 'y2x'],
+        verbose=VERBOSE_BATCH_WISE
+    ):
+        # Attaching would be repaeted for serveral metrics.
+        # Thus, we can reduce the repeated codes by using this function.
+        def attach_running_average(engine, metric_name):
+            RunningAverage(output_transform=lambda x: x[metric_name]).attach(
+                engine,
+                metric_name,
+            )
 
-        RunningAverage(output_transform=lambda x: x[0]).attach(trainer, 'x2y')
-        RunningAverage(output_transform=lambda x: x[1]).attach(trainer, 'y2x')
-        RunningAverage(output_transform=lambda x: x[2]).attach(trainer, 'reg')
-        RunningAverage(output_transform=lambda x: x[3]).attach(trainer, '|param|')
-        RunningAverage(output_transform=lambda x: x[4]).attach(trainer, '|g_param|')
+        for metric_name in training_metric_names:
+            attach_running_average(train_engine, metric_name)
 
         if verbose >= VERBOSE_BATCH_WISE:
             pbar = ProgressBar(bar_format=None, ncols=120)
-            pbar.attach(trainer, ['|param|', '|g_param|', 'x2y', 'y2x', 'reg'])
+            pbar.attach(train_engine, training_metric_names)
 
         if verbose >= VERBOSE_EPOCH_WISE:
-            @trainer.on(Events.EPOCH_COMPLETED)
+            @train_engine.on(Events.EPOCH_COMPLETED)
             def print_train_logs(engine):
                 avg_p_norm = engine.state.metrics['|param|']
                 avg_g_norm = engine.state.metrics['|g_param|']
@@ -243,12 +257,12 @@ class DualSupervisedTrainingEngine(Engine):
                     avg_reg,
                 ))
 
-        RunningAverage(output_transform=lambda x: x[0]).attach(evaluator, 'x2y')
-        RunningAverage(output_transform=lambda x: x[1]).attach(evaluator, 'y2x')
+        for metric_name in validation_metric_names:
+            attach_running_average(validation_engine, metric_name)
 
         if verbose >= VERBOSE_BATCH_WISE:
             pbar = ProgressBar(bar_format=None, ncols=120)
-            pbar.attach(evaluator, ['x2y', 'y2x'])
+            pbar.attach(validation_engine, validation_metric_names)
 
         if verbose >= VERBOSE_EPOCH_WISE:
             @evaluator.on(Events.EPOCH_COMPLETED)
@@ -341,7 +355,7 @@ class DualSupervisedTrainer():
         n_epochs,
         lr_schedulers=None
     ):
-        trainer = DualSupervisedTrainingEngine(
+        train_engine = DualSupervisedTrainingEngine(
             DualSupervisedTrainingEngine.train,
             models,
             crits,
@@ -350,7 +364,7 @@ class DualSupervisedTrainer():
             language_models,
             self.config,
         )
-        evaluator = DualSupervisedTrainingEngine(
+        validation_engine = DualSupervisedTrainingEngine(
             DualSupervisedTrainingEngine.validate,
             models,
             crits,
@@ -361,32 +375,32 @@ class DualSupervisedTrainer():
         )
 
         DualSupervisedTrainingEngine.attach(
-            trainer,
-            evaluator,
+            train_engine,
+            validation_engine,
             verbose=self.config.verbose
         )
 
-        def run_validation(engine, evaluator, valid_loader):
-            evaluator.run(valid_loader, max_epochs=1)
+        def run_validation(engine, validation_engine, valid_loader):
+            validation_engine.run(valid_loader, max_epochs=1)
 
             if engine.lr_schedulers is not None:
                 for s in engine.lr_schedulers:
                     s.step()
 
-        trainer.add_event_handler(
-            Events.EPOCH_COMPLETED, run_validation, evaluator, valid_loader
+        train_engine.add_event_handler(
+            Events.EPOCH_COMPLETED, run_validation, validation_engine, valid_loader
         )
-        evaluator.add_event_handler(
+        validation_engine.add_event_handler(
             Events.EPOCH_COMPLETED, DualSupervisedTrainingEngine.check_best
         )
-        evaluator.add_event_handler(
+        validation_engine.add_event_handler(
             Events.EPOCH_COMPLETED,
             DualSupervisedTrainingEngine.save_model,
-            trainer,
+            train_engine,
             self.config,
             vocabs,
         )
 
-        trainer.run(train_loader, max_epochs=n_epochs)
+        train_engine.run(train_loader, max_epochs=n_epochs)
 
         return models

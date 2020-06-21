@@ -1,10 +1,16 @@
 # from nltk.translate.bleu_score import sentence_bleu as score_func
 from nltk.translate.gleu_score import sentence_gleu as score_func
 
+import numpy as np
 import torch
 
+from torch import optim
 import torch.nn.utils as torch_utils
-from ignite.engine import Engine, Events
+
+from ignite.engine import Engine
+from ignite.engine import Events
+from ignite.metrics import RunningAverage
+from ignite.contrib.handlers.tqdm_logger import ProgressBar
 
 VERBOSE_SILENT = 0
 VERBOSE_EPOCH_WISE = 1
@@ -173,13 +179,13 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         # Take a step of gradient descent.
         engine.optimizer.step()
 
-        return (
-            float(actor_reward.mean()),
-            float(baseline.mean()),
-            float(final_reward.mean()),
-            p_norm,
-            g_norm,
-        )
+        return {
+            'actor': float(actor_reward.mean()),
+            'baseline': float(baseline.mean()),
+            'reward': float(final_reward.mean()),
+            '|param|': p_norm,
+            '|g_param|': g_norm,
+        }
 
     @staticmethod
     def validate(engine, mini_batch):
@@ -206,27 +212,32 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                 n_gram=engine.config.rl_n_gram,
             )
 
-        return float(reward.mean())
+        return {
+            'BLEU': float(reward.mean()),
+        }
 
     @staticmethod
-    def attach(trainer, evaluator, verbose=VERBOSE_BATCH_WISE):
-        from ignite.engine import Events
-        from ignite.metrics import RunningAverage
-        from ignite.contrib.handlers.tqdm_logger import ProgressBar
+    def attach(
+        train_engine,
+        validation_engine,
+        training_metric_names = ['actor', 'baseline', 'reward', '|param|', '|g_param|'],
+        validation_metric_names = ['BLEU', ],
+        verbose=VERBOSE_BATCH_WISE
+    ):
+        # Attaching would be repaeted for serveral metrics.
+        # Thus, we can reduce the repeated codes by using this function.
+        def attach_running_average(engine, metric_name):
+            RunningAverage(output_transform=lambda x: x[metric_name]).attach(
+                engine,
+                metric_name,
+            )
 
-        RunningAverage(output_transform=lambda x: x[0]).attach(trainer, 'actor')
-        RunningAverage(output_transform=lambda x: x[1]).attach(trainer, 'baseline')
-        RunningAverage(output_transform=lambda x: x[2]).attach(trainer, 'reward')
-        RunningAverage(output_transform=lambda x: x[3]).attach(trainer, '|param|')
-        RunningAverage(output_transform=lambda x: x[4]).attach(trainer, '|g_param|')
+        for metric_name in training_metric_names:
+            attach_running_average(train_engine, metric_name)
 
         if verbose >= VERBOSE_BATCH_WISE:
             pbar = ProgressBar(bar_format=None, ncols=120)
-            pbar.attach(trainer, ['|param|',
-                                  '|g_param|',
-                                  'actor',
-                                  'baseline',
-                                  'reward'])
+            pbar.attach(train_engine, training_metric_names)
 
         if verbose >= VERBOSE_EPOCH_WISE:
             @trainer.on(Events.EPOCH_COMPLETED)
@@ -242,11 +253,12 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                     avg_reward,
                 ))
 
-        RunningAverage(output_transform=lambda x: x).attach(evaluator, 'BLEU')
+        for metric_name in training_metric_names:
+            attach_running_average(train_engine, metric_name)
 
         if verbose >= VERBOSE_BATCH_WISE:
             pbar = ProgressBar(bar_format=None, ncols=120)
-            pbar.attach(evaluator, ['BLEU'])
+            pbar.attach(validation_engine, validation_metric_names)
 
         if verbose >= VERBOSE_EPOCH_WISE:
             @evaluator.on(Events.EPOCH_COMPLETED)
@@ -280,6 +292,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
         model_fn = '.'.join(model_fn)
 
+        # Unlike other tasks, we need to save current model, not best model.
         torch.save(
             {
                 'model': engine.model.state_dict(),
