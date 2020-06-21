@@ -11,3 +11,4 @@ nlp_preprocessing
 
 run_test_enko.sh
 run_test_koen.sh
+.vscode/
