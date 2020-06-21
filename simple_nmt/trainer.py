@@ -224,10 +224,14 @@ class SingleTrainer():
             config=self.config
         )
 
-        self.target_engine_class.attach(train_engine, validation_engine, verbose=self.config.verbose)
+        self.target_engine_class.attach(
+            train_engine,
+            validation_engine,
+            verbose=self.config.verbose
+        )
 
-        def run_validation(engine, evaluator, valid_loader):
-            evaluator.run(valid_loader, max_epochs=1)
+        def run_validation(engine, validation_engine, valid_loader):
+            validation_engine.run(valid_loader, max_epochs=1)
 
             if engine.lr_scheduler is not None and not engine.config.use_noam_decay:
                 engine.lr_scheduler.step()
