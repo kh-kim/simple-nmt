@@ -21,8 +21,6 @@ class SingleBeamSearchSpace():
         self.beam_size = beam_size
         self.max_length = max_length
 
-        super(SingleBeamSearchSpace, self).__init__()
-
         # To put data to same device.
         self.device = device
         # Inferred word index for each time-step. For now, initialized with initial time-step.
