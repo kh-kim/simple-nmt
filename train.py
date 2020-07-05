@@ -429,9 +429,11 @@ def main(config, model_weight=None, opt_weight=None):
             if config.lr_step > 0:
                 lr_scheduler = optim.lr_scheduler.MultiStepLR(
                     optimizer,
-                    milestones=[i for i in range(max(0, config.lr_decay_start - 1),
-                                                 (config.init_epoch - 1) + config.n_epochs,
-                                                 config.lr_step)],
+                    milestones=[i for i in range(
+                        max(0, config.lr_decay_start - 1),
+                        (config.init_epoch - 1) + config.n_epochs,
+                        config.lr_step
+                    )],
                     gamma=config.lr_gamma
                 )
 
@@ -458,13 +460,14 @@ def main(config, model_weight=None, opt_weight=None):
 
         if config.rl_n_epochs > 0:
             optimizer = optim.SGD(model.parameters(), lr=config.rl_lr)
+            #optimizer = optim.Adam(model.parameters(), lr=config.rl_lr)
 
             from simple_nmt.rl_trainer import MinimumRiskTrainingEngine
             mrt_trainer = SingleTrainer(MinimumRiskTrainingEngine, config)
 
             mrt_trainer.train(
                 model,
-                crit,
+                None, # We don't need criterion for MRT.
                 optimizer,
                 train_loader=loader.train_iter,
                 valid_loader=loader.valid_iter,
