@@ -253,8 +253,8 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                     avg_reward,
                 ))
 
-        for metric_name in training_metric_names:
-            attach_running_average(train_engine, metric_name)
+        for metric_name in validation_metric_names:
+            attach_running_average(validation_engine, metric_name)
 
         if verbose >= VERBOSE_BATCH_WISE:
             pbar = ProgressBar(bar_format=None, ncols=120)
