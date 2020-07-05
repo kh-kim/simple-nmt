@@ -73,6 +73,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
 
         return {
             'loss': float(loss / word_count),
+            'ppl': np.exp(float(loss / word_count)),
             '|param|': p_norm,
             '|g_param|': g_norm,
         }
@@ -97,13 +98,14 @@ class MaximumLikelihoodEstimationEngine(Engine):
 
         return {
             'loss': float(loss / word_count),
+            'ppl': np.exp(float(loss / word_count)),
         }
 
     @staticmethod
     def attach(
         train_engine, validation_engine,
-        training_metric_names = ['loss', '|param|', '|g_param|'],
-        validation_metric_names = ['loss', ],
+        training_metric_names = ['loss', 'ppl', '|param|', '|g_param|'],
+        validation_metric_names = ['loss', 'ppl'],
         verbose=VERBOSE_BATCH_WISE,
     ):
         # Attaching would be repaeted for serveral metrics.
