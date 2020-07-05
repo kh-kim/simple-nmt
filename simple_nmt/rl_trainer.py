@@ -270,6 +270,12 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                 ))
 
     @staticmethod
+    def resume_training(engine, resume_epoch):
+        resume_epoch = max(1, resume_epoch - engine.config.n_epochs)
+        engine.state.iteration = (resume_epoch - 1) * len(engine.state.dataloader)
+        engine.state.epoch = (resume_epoch - 1)
+
+    @staticmethod
     def check_best(engine):
         loss = -float(engine.state.metrics['BLEU'])
         if loss <= engine.best_loss:

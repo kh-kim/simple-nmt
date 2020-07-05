@@ -295,6 +295,11 @@ class DualSupervisedTrainingEngine(Engine):
                 ))
 
     @staticmethod
+    def resume_training(engine, resume_epoch):
+        engine.state.iteration = (resume_epoch - 1) * len(engine.state.dataloader)
+        engine.state.epoch = (resume_epoch - 1)
+
+    @staticmethod
     def check_best(engine):
         from copy import deepcopy
 
@@ -401,6 +406,12 @@ class DualSupervisedTrainer():
         train_engine.add_event_handler(
             Events.EPOCH_COMPLETED, run_validation, validation_engine, valid_loader
         )
+        train_engine.add_event_handler(
+            Events.STARTED,
+            DualSupervisedTrainingEngine.resume_training,
+            self.config.init_epoch,
+        )
+
         validation_engine.add_event_handler(
             Events.EPOCH_COMPLETED, DualSupervisedTrainingEngine.check_best
         )
