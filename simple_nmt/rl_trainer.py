@@ -63,44 +63,28 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         return scores
 
     @staticmethod
-    def get_gradient(y_hat, indice, crit, reward=1):
+    def get_gradient(y_hat, indice, risk=1):
         from torch.nn import functional as F
         import data_loader
         # |indice| = (batch_size, length)
         # |y_hat| = (batch_size, length, output_size)
-        # |reward| = (batch_size)
+        # |risk| = (batch_size)
         batch_size = indice.size(0)
         output_size = y_hat.size(-1)
 
-        # Before we get the gradient,
-        # multiply -reward for each sample and each time-step.
-        y_hat = y_hat * -reward.view(-1, 1, 1).expand(*y_hat.size())
-
-        # Generate one-hot to get log-probability.
-        y_hat = y_hat.view(-1, y_hat.size(-1))
-        indice = F.one_hot(indice.view(-1), num_classes=y_hat.size(-1)).float()
-        # |indice| = |y_hat| = (batch_size * length, output_size)
-        
-        # Generate and apply loss weight to ignore the PAD.
-        loss_weight = torch.ones(output_size).to(indice.device)
-        loss_weight[data_loader.PAD] = 0.
-        indice = indice * loss_weight.view(1, -1)
-
-        log_prob = (indice * y_hat).view(batch_size, -1)
+        mask = indice == data_loader.PAD
+        # |mask| = (batch_size, length)
+        indice = F.one_hot(indice, num_classes=output_size).float()
+        # |indice| = (batch_size, length, output_size)
+        log_prob = (y_hat * indice).sum(dim=-1)
         # |log_prob| = (batch_size, length)
-        log_prob.sum().div(batch_size).backward()
+        log_prob.masked_fill_(mask, 0)
+        log_prob = log_prob.sum(dim=-1)
+        # |log_prob| = (batch_size, )
+        loss = (log_prob * risk).sum()
+        loss.backward()
 
-        # Like as below, you can also calculate log-probability of sample
-        # using Log-Likelihood Loss, which is -NLLLoss.
-        # By maximizing NLLLoss, log-probability would be minimized,
-        # and it also minimizes "risk", which is "-reward".
-        #
-        # log_prob = -crit(y_hat.contiguous().view(-1, y_hat.size(-1)),
-        #                  indice.contiguous().view(-1)
-        #                  )
-        # log_prob.div(batch_size).backward()
-
-        return log_prob
+        return loss
 
     @staticmethod
     def train(engine, mini_batch):
@@ -152,20 +136,19 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                     )
                 ]
 
-            baseline = torch.stack(baseline).sum(dim=0).div(engine.config.rl_n_samples)
+            baseline = torch.stack(baseline).mean(dim=0)
             # |baseline| = (n_samples, batch_size) --> (batch_size)
 
         # Now, we have relatively expected cumulative reward.
         # Which score can be drawn from actor_reward subtracted by baseline.
-        final_reward = actor_reward - baseline
-        # |final_reward| = (batch_size)
+        risk = (-actor_reward) - (-baseline)
+        # |risk| = (batch_size)
 
         # calculate gradients with back-propagation
         MinimumRiskTrainingEngine.get_gradient(
             y_hat,
             indice,
-            engine.crit,
-            reward=final_reward
+            risk=risk
         )
 
         p_norm = float(get_parameter_norm(engine.model.parameters()))
@@ -182,7 +165,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         return {
             'actor': float(actor_reward.mean()),
             'baseline': float(baseline.mean()),
-            'reward': float(final_reward.mean()),
+            'risk': float(risk.mean()),
             '|param|': p_norm,
             '|g_param|': g_norm,
         }
@@ -220,7 +203,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
     def attach(
         train_engine,
         validation_engine,
-        training_metric_names = ['actor', 'baseline', 'reward', '|param|', '|g_param|'],
+        training_metric_names = ['actor', 'baseline', 'risk', '|param|', '|g_param|'],
         validation_metric_names = ['BLEU', ],
         verbose=VERBOSE_BATCH_WISE
     ):
