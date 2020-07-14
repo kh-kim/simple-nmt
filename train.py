@@ -12,8 +12,16 @@ from simple_nmt.models.transformer import Transformer
 from simple_nmt.models.rnnlm import LanguageModel
 
 
-def define_argparser():
+
+def define_argparser(is_continue=False):
     p = argparse.ArgumentParser()
+
+    if is_continue:
+        p.add_argument(
+            '--load_fn',
+            required=True,
+            help='Model file name to continue.'
+        )
 
     p.add_argument(
         '--model_fn',
