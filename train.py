@@ -1,4 +1,5 @@
 import argparse
+import pprint
 
 import torch
 from torch import optim
@@ -11,6 +12,12 @@ from simple_nmt.models.seq2seq import Seq2Seq
 from simple_nmt.models.transformer import Transformer
 from simple_nmt.models.rnnlm import LanguageModel
 
+from simple_nmt.lm_trainer import LanguageModelTrainer as LMTrainer
+from simple_nmt.dual_trainer import DualSupervisedTrainer as DSLTrainer
+from simple_nmt.trainer import SingleTrainer
+
+from simple_nmt.rl_trainer import MinimumRiskTrainingEngine
+from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
 
 
 def define_argparser(is_continue=False):
@@ -233,7 +240,6 @@ def define_argparser(is_continue=False):
 
 def main(config, model_weight=None, opt_weight=None):
     def print_config(config):
-        import pprint
         pp = pprint.PrettyPrinter(indent=4)
         pp.pprint(vars(config))
     print_config(config)
@@ -248,8 +254,6 @@ def main(config, model_weight=None, opt_weight=None):
             max_length=config.max_length,
             dsl=config.dsl,
         )
-
-        from simple_nmt.lm_trainer import LanguageModelTrainer as LMTrainer
 
         language_models = [
             LanguageModel(
@@ -336,7 +340,6 @@ def main(config, model_weight=None, opt_weight=None):
             dsl=config.dsl
         )
 
-        from simple_nmt.dual_trainer import DualSupervisedTrainer as DSLTrainer
         dsl_trainer = DSLTrainer(config)
 
         optimizers = [
@@ -370,9 +373,6 @@ def main(config, model_weight=None, opt_weight=None):
             dsl=config.dsl
         )
 
-        from simple_nmt.trainer import SingleTrainer
-        from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
-
         # Encoder's embedding layer input size
         input_size = len(loader.src.vocab)
         # Decoder's embedding layer input size and Generator's softmax layer output size
@@ -389,7 +389,8 @@ def main(config, model_weight=None, opt_weight=None):
                 dropout_p=config.dropout,
             )
         else:
-            model = Seq2Seq(input_size,
+            model = Seq2Seq(
+                input_size,
                             config.word_vec_size,  # Word embedding vector size
                             config.hidden_size,  # LSTM's hidden vector size
                             output_size,
@@ -403,7 +404,8 @@ def main(config, model_weight=None, opt_weight=None):
         loss_weight[data_loader.PAD] = 0.
         # Instead of using Cross-Entropy loss,
         # we can use Negative Log-Likelihood(NLL) loss with log-probability.
-        crit = nn.NLLLoss(weight=loss_weight, 
+        crit = nn.NLLLoss(
+            weight=loss_weight,
                           reduction='sum'
                           )
 
@@ -470,7 +472,6 @@ def main(config, model_weight=None, opt_weight=None):
             optimizer = optim.SGD(model.parameters(), lr=config.rl_lr)
             #optimizer = optim.Adam(model.parameters(), lr=config.rl_lr)
 
-            from simple_nmt.rl_trainer import MinimumRiskTrainingEngine
             mrt_trainer = SingleTrainer(MinimumRiskTrainingEngine, config)
 
             mrt_trainer.train(
