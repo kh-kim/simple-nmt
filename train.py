@@ -368,7 +368,7 @@ def main(config, model_weight=None, opt_weight=None):
             config.valid,
             (config.lang[:2], config.lang[-2:]),
             batch_size=config.batch_size,
-            device=config.gpu_id,
+            device=-1, #config.gpu_id,
             max_length=config.max_length,
             dsl=config.dsl
         )
@@ -391,12 +391,12 @@ def main(config, model_weight=None, opt_weight=None):
         else:
             model = Seq2Seq(
                 input_size,
-                            config.word_vec_size,  # Word embedding vector size
-                            config.hidden_size,  # LSTM's hidden vector size
-                            output_size,
-                            n_layers=config.n_layers,  # number of layers in LSTM
-                            dropout_p=config.dropout  # dropout-rate in LSTM
-                            )
+                config.word_vec_size,  # Word embedding vector size
+                config.hidden_size,  # LSTM's hidden vector size
+                output_size,
+                n_layers=config.n_layers,  # number of layers in LSTM
+                dropout_p=config.dropout  # dropout-rate in LSTM
+            )
 
         # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
         # Thus, set a weight for PAD to zero.
@@ -406,8 +406,8 @@ def main(config, model_weight=None, opt_weight=None):
         # we can use Negative Log-Likelihood(NLL) loss with log-probability.
         crit = nn.NLLLoss(
             weight=loss_weight,
-                          reduction='sum'
-                          )
+            reduction='sum'
+        )
 
         print(model)
         print(crit)

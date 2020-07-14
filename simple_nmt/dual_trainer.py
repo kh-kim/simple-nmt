@@ -128,6 +128,10 @@ class DualSupervisedTrainingEngine(Engine):
             model.train()
             optimizer.zero_grad()
 
+        device = next(engine.model.parameters()).device
+        mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
+        mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1])
+        
         # X2Y
         x, y = (mini_batch.src[0][:, 1:-1], mini_batch.src[1] - 2), mini_batch.tgt[0][:, :-1]
         # |x| = (batch_size, n)
@@ -196,6 +200,10 @@ class DualSupervisedTrainingEngine(Engine):
             model.eval()
 
         with torch.no_grad():
+            device = next(engine.model.parameters()).device
+            mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
+            mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1])
+
             # X2Y
             x, y = (mini_batch.src[0][:, 1:-1], mini_batch.src[1] - 2), mini_batch.tgt[0][:, :-1]
             # |x| = (batch_size, n)

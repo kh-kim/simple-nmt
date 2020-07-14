@@ -95,6 +95,10 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         engine.model.train()        
         engine.optimizer.zero_grad()
 
+        device = next(engine.model.parameters()).device
+        mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
+        mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1])
+
         # Raw target variable has both BOS and EOS token.
         # The output of sequence-to-sequence does not have BOS token.
         # Thus, remove BOS token for reference.
@@ -177,6 +181,10 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         engine.model.eval()
 
         with torch.no_grad():
+            device = next(engine.model.parameters()).device
+            mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
+            mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1])
+
             x, y = mini_batch.src, mini_batch.tgt[0][:, 1:]
             # |x| = (batch_size, length)
             # |y| = (batch_size, length)

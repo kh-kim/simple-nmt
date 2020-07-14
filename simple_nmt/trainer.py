@@ -37,6 +37,10 @@ class MaximumLikelihoodEstimationEngine(Engine):
         engine.model.train()        
         engine.optimizer.zero_grad()
 
+        device = next(engine.model.parameters()).device
+        mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
+        mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1])
+
         # Raw target variable has both BOS and EOS token. 
         # The output of sequence-to-sequence does not have BOS token. 
         # Thus, remove BOS token for reference.
@@ -71,9 +75,12 @@ class MaximumLikelihoodEstimationEngine(Engine):
         if engine.config.use_noam_decay and engine.lr_scheduler is not None:
             engine.lr_scheduler.step()
 
+        loss = float(loss / word_count)
+        ppl = np.exp(loss)
+
         return {
-            'loss': float(loss / word_count),
-            'ppl': np.exp(float(loss / word_count)),
+            'loss': loss,
+            'ppl': ppl,
             '|param|': p_norm,
             '|g_param|': g_norm,
         }
@@ -85,9 +92,14 @@ class MaximumLikelihoodEstimationEngine(Engine):
         engine.model.eval()
 
         with torch.no_grad():
+            device = next(engine.model.parameters()).device
+            mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
+            mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1])
+
             x, y = mini_batch.src, mini_batch.tgt[0][:, 1:]
             # |x| = (batch_size, length)
             # |y| = (batch_size, length)
+
             y_hat = engine.model(x, mini_batch.tgt[0][:, :-1])
             # |y_hat| = (batch_size, n_classes)
             loss = engine.crit(
@@ -96,9 +108,12 @@ class MaximumLikelihoodEstimationEngine(Engine):
             )
             word_count = int(mini_batch.tgt[1].sum())
 
+        loss = float(loss / word_count)
+        ppl = np.exp(loss)
+
         return {
-            'loss': float(loss / word_count),
-            'ppl': np.exp(float(loss / word_count)),
+            'loss': loss,
+            'ppl': ppl,
         }
 
     @staticmethod
