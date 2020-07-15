@@ -62,16 +62,19 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
         return scores
 
+
     @staticmethod
     def get_gradient(y_hat, indice, risk=1):
         from torch.nn import functional as F
         import data_loader
         # |indice| = (batch_size, length)
         # |y_hat| = (batch_size, length, output_size)
-        # |risk| = (batch_size)
+        # |risk| = (batch_size,)
         batch_size = indice.size(0)
         output_size = y_hat.size(-1)
 
+        '''
+        # Memory inefficient but more readable version
         mask = indice == data_loader.PAD
         # |mask| = (batch_size, length)
         indice = F.one_hot(indice, num_classes=output_size).float()
@@ -81,6 +84,16 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         log_prob.masked_fill_(mask, 0)
         log_prob = log_prob.sum(dim=-1)
         # |log_prob| = (batch_size, )
+        '''
+
+        # Memory efficient version
+        log_prob = -F.nll_loss(
+            y_hat.view(-1, output_size),
+            indice.view(-1),
+            ignore_index=data_loader.PAD,
+            reduction='none'
+        ).view(batch_size, -1).sum(dim=-1)
+
         loss = (log_prob * risk).sum()
         loss.backward()
 
