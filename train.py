@@ -32,22 +32,22 @@ def define_argparser(is_continue=False):
 
     p.add_argument(
         '--model_fn',
-        required=True,
+        required=not is_continue,
         help='Model file name to save. Additional information would be annotated to the file name.'
     )
     p.add_argument(
         '--train',
-        required=True,
+        required=not is_continue,
         help='Training set file name except the extention. (ex: train.en --> train)'
     )
     p.add_argument(
         '--valid',
-        required=True,
+        required=not is_continue,
         help='Validation set file name except the extention. (ex: valid.en --> valid)'
     )
     p.add_argument(
         '--lang',
-        required=True,
+        required=not is_continue,
         help='Set of extention represents language pair. (ex: en + ko --> enko)'
     )
     p.add_argument(
