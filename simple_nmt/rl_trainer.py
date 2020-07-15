@@ -12,19 +12,18 @@ from ignite.engine import Events
 from ignite.metrics import RunningAverage
 from ignite.contrib.handlers.tqdm_logger import ProgressBar
 
+import data_loader
+from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
+
 VERBOSE_SILENT = 0
 VERBOSE_EPOCH_WISE = 1
 VERBOSE_BATCH_WISE = 2
-
-
-from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
 
 
 class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
     @staticmethod
     def get_reward(y_hat, y, n_gram=6):
-        import data_loader
         # This method gets the reward based on the sampling result and reference sentence.
         # For now, we uses GLEU in NLTK, but you can used your own well-defined reward function.
         # In addition, GLEU is variation of BLEU, and it is more fit to reinforcement learning.
@@ -35,32 +34,31 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         # |y| = (batch_size, length1)
         # |y_hat| = (batch_size, length2)
 
-        scores = []
+        with torch.no_grad():
+            scores = []
 
-        # Actually, below is really far from parallelized operations.
-        # Thus, it may cause slow training.
-        for b in range(y.size(0)):
-            ref = []
-            hyp = []
-            for t in range(y.size(1)):
-                ref += [str(int(y[b, t]))]
-                if y[b, t] == data_loader.EOS:
-                    break
+            for b in range(y.size(0)):
+                ref = []
+                hyp = []
+                for t in range(y.size(-1)):
+                    ref += [str(int(y[b, t]))]
+                    if y[b, t] == data_loader.EOS:
+                        break
 
-            for t in range(y_hat.size(1)):
-                hyp += [str(int(y_hat[b, t]))]
-                if y_hat[b, t] == data_loader.EOS:
-                    break
+                for t in range(y_hat.size(-1)):
+                    hyp += [str(int(y_hat[b, t]))]
+                    if y_hat[b, t] == data_loader.EOS:
+                        break
+                # Below lines are slower than naive for loops in above.
+                # ref = y[b].masked_select(y[b] != data_loader.PAD).tolist()
+                # hyp = y_hat[b].masked_select(y_hat[b] != data_loader.PAD).tolist()
 
-            # for nltk.bleu & nltk.gleu
-            scores += [score_func([ref], hyp, max_len=n_gram) * 100.]
+                # for nltk.bleu & nltk.gleu
+                scores += [score_func([ref], hyp, max_len=n_gram) * 100.]
+            scores = torch.FloatTensor(scores).to(y.device)
+            # |scores| = (batch_size)
 
-            # for utils.score_sentence
-            # scores += [score_func(ref, hyp, 4, smooth = 1)[-1] * 100.]
-        scores = torch.FloatTensor(scores).to(y.device)
-        # |scores| = (batch_size)
-
-        return scores
+            return scores
 
 
     @staticmethod
