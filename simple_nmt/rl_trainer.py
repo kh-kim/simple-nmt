@@ -289,7 +289,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         model_fn = config.model_fn.split('.')
 
         model_fn = model_fn[:-1] + ['mrt',
-                                    '%02d' % ((config.rl_init_epoch - 1) + train_engine.state.epoch),
+                                    '%02d' % train_engine.state.epoch,
                                     '%.2f-%.2f' % (avg_train_bleu,
                                                    avg_valid_bleu),
                                     ] + [model_fn[-1]]
