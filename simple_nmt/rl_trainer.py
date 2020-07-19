@@ -6,14 +6,16 @@ import torch
 
 from torch import optim
 import torch.nn.utils as torch_utils
+from torch.nn import functional as F
 
 from ignite.engine import Engine
 from ignite.engine import Events
 from ignite.metrics import RunningAverage
 from ignite.contrib.handlers.tqdm_logger import ProgressBar
 
-import data_loader
+import simple_nmt.data_loader as data_loader
 from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
+from simple_nmt.utils import get_grad_norm, get_parameter_norm
 
 VERBOSE_SILENT = 0
 VERBOSE_EPOCH_WISE = 1
@@ -63,8 +65,6 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
     @staticmethod
     def get_gradient(y_hat, indice, risk=1):
-        from torch.nn import functional as F
-        import data_loader
         # |indice| = (batch_size, length)
         # |y_hat| = (batch_size, length, output_size)
         # |risk| = (batch_size,)
@@ -99,8 +99,6 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
     @staticmethod
     def train(engine, mini_batch):
-        from utils import get_grad_norm, get_parameter_norm
-
         # You have to reset the gradients of all model parameters
         # before to take another step in gradient descent.
         engine.model.train()        
@@ -187,8 +185,6 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
     @staticmethod
     def validate(engine, mini_batch):
-        from utils import get_grad_norm, get_parameter_norm
-
         engine.model.eval()
 
         with torch.no_grad():

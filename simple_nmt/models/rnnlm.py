@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-import data_loader
+import simple_nmt.data_loader as data_loader
 
 
 class LanguageModel(nn.Module):

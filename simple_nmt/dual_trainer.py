@@ -9,6 +9,8 @@ from ignite.engine import Events
 from ignite.metrics import RunningAverage
 from ignite.contrib.handlers.tqdm_logger import ProgressBar
 
+from simple_nmt.utils import get_grad_norm, get_parameter_norm
+
 VERBOSE_SILENT = 0
 VERBOSE_EPOCH_WISE = 1
 VERBOSE_BATCH_WISE = 2
@@ -119,8 +121,6 @@ class DualSupervisedTrainingEngine(Engine):
 
     @staticmethod
     def train(engine, mini_batch):
-        from utils import get_grad_norm, get_parameter_norm
-
         for language_model, model, optimizer in zip(engine.language_models,
                                                     engine.models,
                                                     engine.optimizers):

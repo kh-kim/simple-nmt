@@ -5,8 +5,8 @@ import torch
 from torch import optim
 import torch.nn as nn
 
-from data_loader import DataLoader
-import data_loader
+from simple_nmt.data_loader import DataLoader
+import simple_nmt.data_loader as data_loader
 
 from simple_nmt.models.seq2seq import Seq2Seq
 from simple_nmt.models.transformer import Transformer
@@ -178,12 +178,6 @@ def define_argparser(is_continue=False):
         type=int,
         default=10,
         help='Number of epochs for reinforcement learning. Default=%(default)s'
-    )
-    p.add_argument(
-        '--rl_init_epoch',
-        type=int,
-        default=1,
-        help='Set initial epoch number for RL, which can be useful in continue training. Default=%(default)s'
     )
     p.add_argument(
         '--rl_n_gram',

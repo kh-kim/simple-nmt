@@ -4,7 +4,7 @@ from operator import itemgetter
 import torch
 import torch.nn as nn
 
-import data_loader
+import simple_nmt.data_loader as data_loader
 
 LENGTH_PENALTY = .2
 MIN_LENGTH = 5

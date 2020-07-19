@@ -9,6 +9,8 @@ from ignite.engine import Events
 from ignite.metrics import RunningAverage
 from ignite.contrib.handlers.tqdm_logger import ProgressBar
 
+from simple_nmt.utils import get_grad_norm, get_parameter_norm
+
 
 VERBOSE_SILENT = 0
 VERBOSE_EPOCH_WISE = 1
@@ -30,8 +32,6 @@ class MaximumLikelihoodEstimationEngine(Engine):
 
     @staticmethod
     def train(engine, mini_batch):
-        from utils import get_grad_norm, get_parameter_norm
-
         # You have to reset the gradients of all model parameters
         # before to take another step in gradient descent.
         engine.model.train()        
@@ -87,8 +87,6 @@ class MaximumLikelihoodEstimationEngine(Engine):
 
     @staticmethod
     def validate(engine, mini_batch):
-        from utils import get_grad_norm, get_parameter_norm
-
         engine.model.eval()
 
         with torch.no_grad():

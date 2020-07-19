@@ -5,8 +5,8 @@ from operator import itemgetter
 
 import torch
 
-from data_loader import DataLoader
-import data_loader
+from simple_nmt.data_loader import DataLoader
+import simple_nmt.data_loader as data_loader
 from simple_nmt.models.seq2seq import Seq2Seq
 from simple_nmt.models.transformer import Transformer
 
