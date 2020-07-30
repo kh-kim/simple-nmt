@@ -416,8 +416,22 @@ def main(config, model_weight=None, opt_weight=None):
 
         if config.use_adam:
             if config.use_transformer:
-                # optimizer = optim.Adam(model.parameters(), lr=config.hidden_size**(-.5), betas=(.9, .98))
-                optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(.9, .98))
+                no_decay = ['bias', 'LayerNorm.weight']
+                optimizer_grouped_parameters = [
+                    {
+                        'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                        'weight_decay': 0.01
+                    },
+                    {
+                        'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+                        'weight_decay': 0.0
+                    }
+                ]
+
+                optimizer = optim.AdamW(
+                    optimizer_grouped_parameters,
+                    lr=config.lr,
+                )
             else: # case of rnn based seq2seq.
                 optimizer = optim.Adam(model.parameters(), lr=config.lr)
         else:
@@ -427,8 +441,13 @@ def main(config, model_weight=None, opt_weight=None):
             optimizer.load_state_dict(opt_weight)
 
         if config.use_noam_decay:
-            f = lambda step: min((step + 1)**(-.5), (step + 1) * config.lr_n_warmup_steps**(-1.5))
-            lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=f)
+            n_total_iterations = len(loader.train_iter) * config.n_epochs / config.iteration_per_update
+            n_warmup_steps = int(n_total_iterations * config.lr_warmup_ratio)
+            lr_scheduler = get_linear_schedule_with_warmup(
+                optimizer,
+                n_warmup_steps,
+                n_total_iterations
+            )
         else:
             if config.lr_step > 0:
                 lr_scheduler = optim.lr_scheduler.MultiStepLR(
