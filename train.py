@@ -5,6 +5,8 @@ import torch
 from torch import optim
 import torch.nn as nn
 
+from transformers import get_linear_schedule_with_warmup
+
 from simple_nmt.data_loader import DataLoader
 import simple_nmt.data_loader as data_loader
 
@@ -148,6 +150,12 @@ def define_argparser(is_continue=False):
         default=10,
         help='Learning rate decay start at. Default=%(default)s',
     )
+    p.add_argument(
+        '--iteration_per_update',
+        type=int,
+        default=1,
+        help='Number of feed-forward iterations for one parameter update. Default=%(default)s'
+    )
 
     p.add_argument(
         '--use_noam_decay',
@@ -155,10 +163,10 @@ def define_argparser(is_continue=False):
         help='Use Noam learning rate decay, which is described in "Attention is All You Need" paper.',
     )
     p.add_argument(
-        '--lr_n_warmup_steps',
-        type=int,
-        default=48000,
-        help='Number of warming up steps for Noam learning rate decay. Default=%(default)s',
+        '--lr_warmup_ratio',
+        type=float,
+        default=.1,
+        help='Ratio of warming up steps from total iterations for Noam learning rate decay. Default=%(default)s',
     )
 
     p.add_argument(

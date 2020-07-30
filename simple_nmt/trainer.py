@@ -1,8 +1,10 @@
 import numpy as np
-import torch
 
+import torch
 from torch import optim
 import torch.nn.utils as torch_utils
+from torch.cuda.amp import autocast
+from torch.cuda.amp import GradScaler
 
 from ignite.engine import Engine
 from ignite.engine import Events
@@ -29,13 +31,15 @@ class MaximumLikelihoodEstimationEngine(Engine):
         super().__init__(func)
 
         self.best_loss = np.inf
+        self.scaler = GradScaler()
 
     @staticmethod
     def train(engine, mini_batch):
         # You have to reset the gradients of all model parameters
         # before to take another step in gradient descent.
-        engine.model.train()        
-        engine.optimizer.zero_grad()
+        engine.model.train()
+        if engine.state.iteration % engine.config.iteration_per_update == 1:
+            engine.optimizer.zero_grad()
 
         device = next(engine.model.parameters()).device
         mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
@@ -48,32 +52,39 @@ class MaximumLikelihoodEstimationEngine(Engine):
         # |x| = (batch_size, length)
         # |y| = (batch_size, length)
 
-        # Take feed-forward
-        # Similar as before, the input of decoder does not have EOS token.
-        # Thus, remove EOS token for decoder input.
-        y_hat = engine.model(x, mini_batch.tgt[0][:, :-1])
-        # |y_hat| = (batch_size, length, output_size)
+        with autocast():
+            # Take feed-forward
+            # Similar as before, the input of decoder does not have EOS token.
+            # Thus, remove EOS token for decoder input.
+            y_hat = engine.model(x, mini_batch.tgt[0][:, :-1])
+            # |y_hat| = (batch_size, length, output_size)
 
-        loss = engine.crit(
-            y_hat.contiguous().view(-1, y_hat.size(-1)),
-            y.contiguous().view(-1)
-        )
-        loss.div(y.size(0)).backward()
+            loss = engine.crit(
+                y_hat.contiguous().view(-1, y_hat.size(-1)),
+                y.contiguous().view(-1)
+            )
+
+        engine.scaler.scale(
+            loss.div(y.size(0)).div(engine.config.iteration_per_update)
+        ).backward()
+
         word_count = int(mini_batch.tgt[1].sum())
-
         p_norm = float(get_parameter_norm(engine.model.parameters()))
         g_norm = float(get_grad_norm(engine.model.parameters()))
 
-        # In orther to avoid gradient exploding, we apply gradient clipping.
-        torch_utils.clip_grad_norm_(
-            engine.model.parameters(),
-            engine.config.max_grad_norm,
-        )
-        # Take a step of gradient descent.
-        engine.optimizer.step()
+        if engine.state.iteration % engine.config.iteration_per_update == 0:
+            # In orther to avoid gradient exploding, we apply gradient clipping.
+            torch_utils.clip_grad_norm_(
+                engine.model.parameters(),
+                engine.config.max_grad_norm,
+            )
+            # Take a step of gradient descent.
+            # engine.optimizer.step()
+            engine.scaler.step(engine.optimizer)
+            engine.scaler.update()
 
-        if engine.config.use_noam_decay and engine.lr_scheduler is not None:
-            engine.lr_scheduler.step()
+            if engine.config.use_noam_decay and engine.lr_scheduler is not None:
+                engine.lr_scheduler.step()
 
         loss = float(loss / word_count)
         ppl = np.exp(loss)
@@ -98,14 +109,15 @@ class MaximumLikelihoodEstimationEngine(Engine):
             # |x| = (batch_size, length)
             # |y| = (batch_size, length)
 
-            y_hat = engine.model(x, mini_batch.tgt[0][:, :-1])
-            # |y_hat| = (batch_size, n_classes)
-            loss = engine.crit(
-                y_hat.contiguous().view(-1, y_hat.size(-1)),
-                y.contiguous().view(-1),
-            )
-            word_count = int(mini_batch.tgt[1].sum())
-
+            with autocast():
+                y_hat = engine.model(x, mini_batch.tgt[0][:, :-1])
+                # |y_hat| = (batch_size, n_classes)
+                loss = engine.crit(
+                    y_hat.contiguous().view(-1, y_hat.size(-1)),
+                    y.contiguous().view(-1),
+                )
+        
+        word_count = int(mini_batch.tgt[1].sum())
         loss = float(loss / word_count)
         ppl = np.exp(loss)
 
