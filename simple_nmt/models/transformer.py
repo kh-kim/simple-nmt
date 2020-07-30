@@ -257,7 +257,7 @@ class Transformer(nn.Module):
         # |enc| = (n, hidden_size)
         pos = init_pos + torch.arange(0, length, device=x.device).unsqueeze(-1)
         dim = (
-            1e+4**torch.arange(0, hidden_size // 2, device=x.device).div(hidden_size)
+            1e+4**torch.arange(0, hidden_size // 2, device=x.device).div(float(hidden_size))
         ).unsqueeze(0)
         # |pos| = (n, 1)
         # |dim| = (1, hidden_size // 2)
