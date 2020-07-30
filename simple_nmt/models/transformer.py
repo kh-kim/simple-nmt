@@ -88,9 +88,13 @@ class MultiHead(nn.Module):
 
 class EncoderBlock(nn.Module):
 
-    def __init__(self, hidden_size, n_splits,
-                 dropout_p=.1, use_leaky_relu=False
-                 ):
+    def __init__(
+        self,
+        hidden_size,
+        n_splits,
+        dropout_p=.1,
+        use_leaky_relu=False,
+    ):
         super().__init__()
 
         self.attn = MultiHead(hidden_size, n_splits)
@@ -121,9 +125,13 @@ class EncoderBlock(nn.Module):
 
 class DecoderBlock(nn.Module):
 
-    def __init__(self, hidden_size, n_splits,
-                 dropout_p=.1, use_leaky_relu=False
-                 ):
+    def __init__(
+        self,
+        hidden_size,
+        n_splits,
+        dropout_p=.1,
+        use_leaky_relu=False,
+    ):
         super().__init__()
 
         self.masked_attn = MultiHead(hidden_size, n_splits)

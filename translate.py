@@ -14,46 +14,54 @@ from simple_nmt.models.transformer import Transformer
 def define_argparser():
     p = argparse.ArgumentParser()
 
-    p.add_argument('--model',
-                   required=True,
-                   help='Model file name to use'
-                   )
-    p.add_argument('--gpu_id',
-                   type=int,
-                   default=-1,
-                   help='GPU ID to use. -1 for CPU. Default=%(default)s'
-                   )
+    p.add_argument(
+        '--model',
+        required=True,
+        help='Model file name to use'
+    )
+    p.add_argument(
+        '--gpu_id',
+        type=int,
+        default=-1,
+        help='GPU ID to use. -1 for CPU. Default=%(default)s'
+    )
 
-    p.add_argument('--batch_size',
-                   type=int,
-                   default=128,
-                   help='Mini batch size for parallel inference. Default=%(default)s'
-                   )
-    p.add_argument('--max_length',
-                   type=int,
-                   default=255,
-                   help='Maximum sequence length for inference. Default=%(default)s'
-                   )
-    p.add_argument('--n_best',
-                   type=int,
-                   default=1,
-                   help='Number of best inference result per sample. Default=%(default)s'
-                   )
-    p.add_argument('--beam_size',
-                   type=int,
-                   default=5,
-                   help='Beam size for beam search. Default=%(default)s'
-                   )
-    p.add_argument('--lang',
-                   type=str,
-                   default=None,
-                   help='Source language and target language. Example: enko'
-                   )
-    p.add_argument('--length_penalty',
-                   type=float,
-                   default=1.2,
-                   help='Length penalty parameter that higher value produce shorter results. Default=%(default)s',
-                   )
+    p.add_argument(
+        '--batch_size',
+        type=int,
+        default=128,
+        help='Mini batch size for parallel inference. Default=%(default)s'
+    )
+    p.add_argument(
+        '--max_length',
+        type=int,
+        default=255,
+        help='Maximum sequence length for inference. Default=%(default)s'
+    )
+    p.add_argument(
+        '--n_best',
+        type=int,
+        default=1,
+        help='Number of best inference result per sample. Default=%(default)s'
+    )
+    p.add_argument(
+        '--beam_size',
+        type=int,
+        default=5,
+        help='Beam size for beam search. Default=%(default)s'
+    )
+    p.add_argument(
+        '--lang',
+        type=str,
+        default=None,
+        help='Source language and target language. Example: enko'
+    )
+    p.add_argument(
+        '--length_penalty',
+        type=float,
+        default=1.2,
+        help='Length penalty parameter that higher value produce shorter results. Default=%(default)s',
+    )
 
     config = p.parse_args()
 
@@ -99,7 +107,10 @@ if __name__ == '__main__':
     config = define_argparser()
 
     # Load saved model.
-    saved_data = torch.load(config.model, map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id)
+    saved_data = torch.load(
+        config.model,
+        map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id
+    )
 
     # Load configuration setting in training.
     train_config = saved_data['config']
@@ -143,13 +154,14 @@ if __name__ == '__main__':
             dropout_p=train_config.dropout,
         )
     else:
-        model = Seq2Seq(input_size,
-                        train_config.word_vec_size,
-                        train_config.hidden_size,
-                        output_size,
-                        n_layers=train_config.n_layers,
-                        dropout_p=train_config.dropout
-                        )
+        model = Seq2Seq(
+            input_size,
+            train_config.word_vec_size,
+            train_config.hidden_size,
+            output_size,
+            n_layers=train_config.n_layers,
+            dropout_p=train_config.dropout,
+        )
 
     if train_config.dsl:
         if not is_reverse:
@@ -181,18 +193,20 @@ if __name__ == '__main__':
             lengths = [len(_) for _ in sorted_lines]
             orders = [i for i in range(len(sorted_lines))]
 
-            sorted_tuples = sorted(zip(sorted_lines, lengths, orders), 
-                                   key=itemgetter(1),
-                                   reverse=True
-                                   )
+            sorted_tuples = sorted(
+                zip(sorted_lines, lengths, orders),
+                key=itemgetter(1),
+                reverse=True,
+            )
             sorted_lines = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
             lengths = [sorted_tuples[i][1] for i in range(len(sorted_tuples))]
             orders = [sorted_tuples[i][2] for i in range(len(sorted_tuples))]
 
             # Converts string to list of index.
-            x = loader.src.numericalize(loader.src.pad(sorted_lines),
-                                        device='cuda:%d' % config.gpu_id if config.gpu_id >= 0 else 'cpu'
-                                        )
+            x = loader.src.numericalize(
+                loader.src.pad(sorted_lines),
+                device='cuda:%d' % config.gpu_id if config.gpu_id >= 0 else 'cpu'
+            )
 
             if config.beam_size == 1:
                 # Take inference for non-parallel beam-search.
@@ -205,12 +219,13 @@ if __name__ == '__main__':
                 sys.stdout.write('\n'.join(output) + '\n')
             else:
                 # Take mini-batch parallelized beam search.
-                batch_indice, _ = model.batch_beam_search(x,
-                                                          beam_size=config.beam_size,
-                                                          max_length=config.max_length,
-                                                          n_best=config.n_best,
-                                                          length_penalty=config.length_penalty,
-                                                          )
+                batch_indice, _ = model.batch_beam_search(
+                    x,
+                    beam_size=config.beam_size,
+                    max_length=config.max_length,
+                    n_best=config.n_best,
+                    length_penalty=config.length_penalty,
+                )
 
                 # Restore the original orders.
                 output = []

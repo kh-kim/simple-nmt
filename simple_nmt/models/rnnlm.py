@@ -6,14 +6,15 @@ import simple_nmt.data_loader as data_loader
 
 class LanguageModel(nn.Module):
 
-    def __init__(self, 
-                 vocab_size,
-                 word_vec_dim=256,
-                 hidden_size=512,
-                 n_layers=4,
-                 dropout_p=.3,
-                 max_length=255
-                 ):
+    def __init__(
+        self,
+        vocab_size,
+        word_vec_dim=256,
+        hidden_size=512,
+        n_layers=4,
+        dropout_p=.3,
+        max_length=255
+    ):
         self.vocab_size = vocab_size
         self.word_vec_dim = word_vec_dim
         self.hidden_size = hidden_size
@@ -23,16 +24,18 @@ class LanguageModel(nn.Module):
 
         super().__init__()
 
-        self.emb = nn.Embedding(vocab_size, 
-                                word_vec_dim,
-                                padding_idx=data_loader.PAD
-                                )
-        self.rnn = nn.LSTM(word_vec_dim,
-                           hidden_size,
-                           n_layers,
-                           batch_first=True,
-                           dropout=dropout_p
-                           )
+        self.emb = nn.Embedding(
+            vocab_size,
+            word_vec_dim,
+            padding_idx=data_loader.PAD,
+        )
+        self.rnn = nn.LSTM(
+            word_vec_dim,
+            hidden_size,
+            n_layers,
+            batch_first=True,
+            dropout=dropout_p,
+        )
         self.out = nn.Linear(hidden_size, vocab_size, bias=True)
         self.log_softmax = nn.LogSoftmax(dim=-1)
 

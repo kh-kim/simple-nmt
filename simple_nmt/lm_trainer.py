@@ -14,7 +14,16 @@ from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
 
 class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
 
-    def __init__(self, func, model, crit, optimizer, lr_scheduler, is_src_target, config):
+    def __init__(
+        self,
+        func,
+        model,
+        crit,
+        optimizer,
+        lr_scheduler,
+        is_src_target,
+        config
+    ):
         self.is_src_target = is_src_target
 
         super().__init__(func, model, crit, optimizer, lr_scheduler, config)

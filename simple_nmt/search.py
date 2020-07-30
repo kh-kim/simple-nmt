@@ -12,12 +12,13 @@ MIN_LENGTH = 5
 
 class SingleBeamSearchSpace():
 
-    def __init__(self,
-                 device,
-                 prev_status=None, # list of tuple, (status_name, status, batch_dim)
-                 beam_size=5,
-                 max_length=255,
-                 ):
+    def __init__(
+        self,
+        device,
+        prev_status=None, # list of tuple, (status_name, status, batch_dim)
+        beam_size=5,
+        max_length=255,
+    ):
         self.beam_size = beam_size
         self.max_length = max_length
 
@@ -115,8 +116,7 @@ class SingleBeamSearchSpace():
         # Add results to history boards.
         self.cumulative_probs += [top_log_prob]
         self.masks += [torch.eq(self.word_indice[-1],
-                       data_loader.EOS)
-                       ]  # Set finish mask if we got EOS.
+                                data_loader.EOS)]  # Set finish mask if we got EOS.
         # Calculate a number of finished beams.
         self.done_cnt += self.masks[-1].float().sum()
 
@@ -152,10 +152,11 @@ class SingleBeamSearchSpace():
                     founds += [(t, b)]
 
         # Sort and take n-best.
-        sorted_founds_with_probs = sorted(zip(founds, probs),
-                                          key=itemgetter(1),
-                                          reverse=True
-                                          )[:n]
+        sorted_founds_with_probs = sorted(
+            zip(founds, probs),
+            key=itemgetter(1),
+            reverse=True,
+        )[:n]
         probs = []
 
         for (end_index, b), prob in sorted_founds_with_probs:

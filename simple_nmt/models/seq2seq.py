@@ -48,13 +48,14 @@ class Encoder(nn.Module):
         # Be aware of value of 'batch_first' parameter.
         # Also, its hidden_size is half of original hidden_size,
         # because it is bidirectional.
-        self.rnn = nn.LSTM(word_vec_dim,
-                           int(hidden_size / 2),
-                           num_layers=n_layers,
-                           dropout=dropout_p,
-                           bidirectional=True,
-                           batch_first=True
-                           )
+        self.rnn = nn.LSTM(
+            word_vec_dim,
+            int(hidden_size / 2),
+            num_layers=n_layers,
+            dropout=dropout_p,
+            bidirectional=True,
+            batch_first=True,
+        )
 
     def forward(self, emb):
         # |emb| = (batch_size, length, word_vec_dim)
@@ -94,13 +95,14 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
 
         # Be aware of value of 'batch_first' parameter and 'bidirectional' parameter.
-        self.rnn = nn.LSTM(word_vec_dim + hidden_size,
-                           hidden_size,
-                           num_layers=n_layers,
-                           dropout=dropout_p,
-                           bidirectional=False,
-                           batch_first=True
-                           )
+        self.rnn = nn.LSTM(
+            word_vec_dim + hidden_size,
+            hidden_size,
+            num_layers=n_layers,
+            dropout=dropout_p,
+            bidirectional=False,
+            batch_first=True,
+        )
 
     def forward(self, emb_t, h_t_1_tilde, h_t_1):
         # |emb_t| = (batch_size, 1, word_vec_dim)
@@ -142,14 +144,15 @@ class Generator(nn.Module):
 
 class Seq2Seq(nn.Module):
 
-    def __init__(self,
-                 input_size,
-                 word_vec_dim,
-                 hidden_size,
-                 output_size,
-                 n_layers=4,
-                 dropout_p=.2
-                 ):
+    def __init__(
+        self,
+        input_size,
+        word_vec_dim,
+        hidden_size,
+        output_size,
+        n_layers=4,
+        dropout_p=.2
+    ):
         self.input_size = input_size
         self.word_vec_dim = word_vec_dim
         self.hidden_size = hidden_size
@@ -162,16 +165,14 @@ class Seq2Seq(nn.Module):
         self.emb_src = nn.Embedding(input_size, word_vec_dim)
         self.emb_dec = nn.Embedding(output_size, word_vec_dim)
 
-        self.encoder = Encoder(word_vec_dim,
-                               hidden_size,
-                               n_layers=n_layers,
-                               dropout_p=dropout_p
-                               )
-        self.decoder = Decoder(word_vec_dim,
-                               hidden_size,
-                               n_layers=n_layers,
-                               dropout_p=dropout_p
-                               )
+        self.encoder = Encoder(
+            word_vec_dim, hidden_size,
+            n_layers=n_layers, dropout_p=dropout_p,
+        )
+        self.decoder = Decoder(
+            word_vec_dim, hidden_size,
+            n_layers=n_layers, dropout_p=dropout_p,
+        )
         self.attn = Attention(hidden_size)
 
         self.concat = nn.Linear(hidden_size * 2, hidden_size)
