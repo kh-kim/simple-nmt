@@ -31,7 +31,7 @@ class SingleBeamSearchSpace():
         # Cumulative log-probability for each beam.
         self.cumulative_probs = [torch.FloatTensor([.0] + [-float('inf')] * (beam_size - 1)).to(self.device)]
         # 1 if it is done else 0
-        self.masks = [torch.ByteTensor(beam_size).zero_().to(self.device)]
+        self.masks = [torch.BoolTensor(beam_size).zero_().to(self.device)]
 
         # We don't need to remember every time-step of hidden states:
         #       prev_hidden, prev_cell, prev_h_t_tilde
@@ -49,11 +49,12 @@ class SingleBeamSearchSpace():
         self.current_time_step = 0
         self.done_cnt = 0
 
-    def get_length_penalty(self,
-                           length,
-                           alpha=LENGTH_PENALTY,
-                           min_length=MIN_LENGTH
-                           ):
+    def get_length_penalty(
+        self,
+        length,
+        alpha=LENGTH_PENALTY,
+        min_length=MIN_LENGTH,
+    ):
         # Calculate length-penalty,
         # because shorter sentence usually have bigger probability.
         # Thus, we need to put penalty for shorter one.
@@ -111,7 +112,7 @@ class SingleBeamSearchSpace():
         # Because we picked from whole batch, original word index should be calculated again.
         self.word_indice += [top_indice.fmod(output_size)]
         # Also, we can get an index of beam, which has top-k log-probability search result.
-        self.prev_beam_indice += [top_indice.div(output_size).long()]
+        self.prev_beam_indice += [top_indice.div(float(output_size)).long()]
 
         # Add results to history boards.
         self.cumulative_probs += [top_log_prob]

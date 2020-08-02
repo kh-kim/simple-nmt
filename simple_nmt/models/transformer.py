@@ -422,12 +422,14 @@ class Transformer(nn.Module):
         z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
-        spaces = [SingleBeamSearchSpace(
-            z.device,
-            [('prev_state_%d' % j, None, 0) for j in range(len(self.decoder._modules) + 1)],
-            beam_size=beam_size,
-            max_length=max_length,
-        ) for i in range(batch_size)]
+        spaces = [
+            SingleBeamSearchSpace(
+                z.device,
+                [('prev_state_%d' % j, None, 0) for j in range(len(self.decoder._modules) + 1)],
+                beam_size=beam_size,
+                max_length=max_length,
+            ) for i in range(batch_size)
+        ]
         done_cnt = [space.is_done() for space in spaces]
 
         length = 0
