@@ -1,4 +1,3 @@
-import collections
 from operator import itemgetter
 
 import torch
@@ -10,12 +9,12 @@ LENGTH_PENALTY = .2
 MIN_LENGTH = 5
 
 
-class SingleBeamSearchSpace():
+class SingleBeamSearchBoard():
 
     def __init__(
         self,
         device,
-        prev_status=None, # list of tuple, (status_name, status, batch_dim)
+        prev_status_config,
         beam_size=5,
         max_length=255,
     ):
@@ -26,8 +25,8 @@ class SingleBeamSearchSpace():
         self.device = device
         # Inferred word index for each time-step. For now, initialized with initial time-step.
         self.word_indice = [torch.LongTensor(beam_size).zero_().to(self.device) + data_loader.BOS]
-        # Index origin of current beam.
-        self.prev_beam_indice = [torch.LongTensor(beam_size).zero_().to(self.device) - 1]
+        # Beam index for selected word index, at each time-step.
+        self.beam_indice = [torch.LongTensor(beam_size).zero_().to(self.device) - 1]
         # Cumulative log-probability for each beam.
         self.cumulative_probs = [torch.FloatTensor([.0] + [-float('inf')] * (beam_size - 1)).to(self.device)]
         # 1 if it is done else 0
@@ -37,14 +36,17 @@ class SingleBeamSearchSpace():
         #       prev_hidden, prev_cell, prev_h_t_tilde
         # What we need is remember just last one.
 
-        self.prev_status = collections.OrderedDict()
-        self.batch_dims = collections.OrderedDict()
-        for status_name, status, batch_dim in prev_status:
-            if status is not None:
-                self.prev_status[status_name] = torch.cat([status] * beam_size, dim=batch_dim)
+        self.prev_status = {}
+        self.batch_dims = {}
+        for prev_status_name, each_config in prev_status_config.items():
+            init_status = each_config['init_status']
+            batch_dim_index = each_config['batch_dim_index']
+            if init_status is not None:
+                self.prev_status[prev_status_name] = torch.cat([init_status] * beam_size,
+                                                               dim=batch_dim_index)
             else:
-                self.prev_status[status_name] = None
-            self.batch_dims[status_name] = batch_dim
+                self.prev_status[prev_status_name] = None
+            self.batch_dims[prev_status_name] = batch_dim_index
 
         self.current_time_step = 0
         self.done_cnt = 0
@@ -77,16 +79,18 @@ class SingleBeamSearchSpace():
         #     |hidden| = |cell| = (n_layers, beam_size, hidden_size)
         #     |h_t_tilde| = (beam_size, 1, hidden_size) or None
         # else:
-        return tuple([y_hat] + prev_status)
+        # return tuple([y_hat] + prev_status)
+        return y_hat, self.prev_status
 
     def collect_result(self, y_hat, prev_status):
         # |y_hat| = (beam_size, 1, output_size)
-        # prev_status is a dict of followings:
+        # prev_status is a dict, which has following keys:
         # if model != transformer:
         #     |hidden| = |cell| = (n_layers, beam_size, hidden_size)
         #     |h_t_tilde| = (beam_size, 1, hidden_size)
         # else:
-        #     |prev_state_i| = (beam_size, length, hidden_size)
+        #     |prev_state_i| = (beam_size, length, hidden_size),
+        #     where i is an index of layer.
         output_size = y_hat.size(-1)
 
         self.current_time_step += 1
@@ -112,12 +116,11 @@ class SingleBeamSearchSpace():
         # Because we picked from whole batch, original word index should be calculated again.
         self.word_indice += [top_indice.fmod(output_size)]
         # Also, we can get an index of beam, which has top-k log-probability search result.
-        self.prev_beam_indice += [top_indice.div(float(output_size)).long()]
+        self.beam_indice += [top_indice.div(float(output_size)).long()]
 
         # Add results to history boards.
         self.cumulative_probs += [top_log_prob]
-        self.masks += [torch.eq(self.word_indice[-1],
-                                data_loader.EOS)]  # Set finish mask if we got EOS.
+        self.masks += [torch.eq(self.word_indice[-1], data_loader.EOS)] # Set finish mask if we got EOS.
         # Calculate a number of finished beams.
         self.done_cnt += self.masks[-1].float().sum()
 
@@ -128,19 +131,19 @@ class SingleBeamSearchSpace():
         # Therefore self.batch_dims stores the dimension index for batch index.
         # For transformer, lastest status is each layer's decoder output from the biginning.
         # Unlike seq2seq, transformer has to memorize every previous output for attention operation.
-        for k, v in prev_status:
-            self.prev_status[k] = torch.index_select(
-                v,
-                dim=self.batch_dims[k],
-                index=self.prev_beam_indice[-1]
+        for prev_status_name, prev_status in prev_status.items():
+            self.prev_status[prev_status_name] = torch.index_select(
+                prev_status,
+                dim=self.batch_dims[prev_status_name],
+                index=self.beam_indice[-1]
             ).contiguous()
 
-    def get_n_best(self, n=1, length_penalty=.2):
+    def get_n_best(self, n=1, length_penalty=.2, eos_onehot_index=1):
         sentences, probs, founds = [], [], []
 
         for t in range(len(self.word_indice)):  # for each time-step,
             for b in range(self.beam_size):  # for each beam,
-                if self.masks[t][b] == 1:  # if we had EOS on this time-step and beam,
+                if self.masks[t][b] == eos_onehot_index:  # if we had EOS on this time-step and beam,
                     # Take a record of penaltified log-proability.
                     probs += [self.cumulative_probs[t][b] / self.get_length_penalty(t, alpha=length_penalty)]
                     founds += [(t, b)]
@@ -166,7 +169,7 @@ class SingleBeamSearchSpace():
             # Trace from the end.
             for t in range(end_index, 0, -1):
                 sentence = [self.word_indice[t][b]] + sentence
-                b = self.prev_beam_indice[t][b]
+                b = self.beam_indice[t][b]
 
             sentences += [sentence]
             probs += [prob]

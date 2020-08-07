@@ -4,7 +4,7 @@ from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 
 import simple_nmt.data_loader as data_loader
-from simple_nmt.search import SingleBeamSearchSpace
+from simple_nmt.search import SingleBeamSearchBoard
 
 
 class Attention(nn.Module):
@@ -392,18 +392,27 @@ class Seq2Seq(nn.Module):
         # |h_src| = (batch_size, length, hidden_size)
         h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
 
-        # initialize 'SingleBeamSearchSpace' as many as batch_size
-        spaces = [SingleBeamSearchSpace(
+        # initialize 'SingleBeamSearchBoard' as many as batch_size
+        boards = [SingleBeamSearchBoard(
             h_src.device,
-            [
-                ('hidden_state', h_0_tgt[0][:, i, :].unsqueeze(1), 1),
-                ('cell_state', h_0_tgt[1][:, i, :].unsqueeze(1), 1),
-                ('h_t_1_tilde', None, 0),
-            ],
+            {
+                'hidden_state': {
+                    'init_status': h_0_tgt[0][:, i, :].unsqueeze(1),
+                    'batch_dim_index': 1,
+                },
+                'cell_state': {
+                    'init_status': h_0_tgt[1][:, i, :].unsqueeze(1),
+                    'batch_dim_index': 1,
+                },
+                'h_t_1_tilde': {
+                    'init_status': None,
+                    'batch_dim_index': 0,
+                },
+            },
             beam_size=beam_size,
             max_length=max_length,
         ) for i in range(batch_size)]
-        done_cnt = [space.is_done() for space in spaces]
+        done_cnt = [board.is_done() for board in boards]
 
         length = 0
         # Run loop while sum of 'done_cnt' is smaller than batch_size, 
@@ -420,36 +429,38 @@ class Seq2Seq(nn.Module):
             
             # Build fabricated mini-batch in non-parallel way.
             # This may cause a bottle-neck.
-            for i, space in enumerate(spaces):
+            for i, board in enumerate(boards):
                 # Batchify if the inference for the sample is still not finished.
-                if space.is_done() == 0:
-                    y_hat_, hidden_, cell_, h_t_tilde_ = space.get_batch()
+                if board.is_done() == 0:
+                    y_hat_i, prev_status = board.get_batch()
+                    hidden_i    = prev_status['hidden_state']
+                    cell_i      = prev_status['cell_state']
+                    h_t_tilde_i = prev_status['h_t_1_tilde']
 
-                    fab_input += [y_hat_]
-                    fab_hidden += [hidden_]
-                    fab_cell += [cell_]
-                    if h_t_tilde_ is not None:
-                        fab_h_t_tilde += [h_t_tilde_]
+                    fab_input  += [y_hat_i]
+                    fab_hidden += [hidden_i]
+                    fab_cell   += [cell_i]
+                    fab_h_src  += [h_src[i, :, :]] * beam_size
+                    fab_mask   += [mask[i, :]] * beam_size
+                    if h_t_tilde_i is not None:
+                        fab_h_t_tilde += [h_t_tilde_i]
                     else:
                         fab_h_t_tilde = None
 
-                    fab_h_src += [h_src[i, :, :]] * beam_size
-                    fab_mask += [mask[i, :]] * beam_size
-
             # Now, concatenate list of tensors.
-            fab_input = torch.cat(fab_input, dim=0)
+            fab_input  = torch.cat(fab_input,  dim=0)
             fab_hidden = torch.cat(fab_hidden, dim=1)
-            fab_cell = torch.cat(fab_cell, dim=1)
+            fab_cell   = torch.cat(fab_cell,   dim=1)
+            fab_h_src  = torch.stack(fab_h_src)
+            fab_mask   = torch.stack(fab_mask)
             if fab_h_t_tilde is not None:
                 fab_h_t_tilde = torch.cat(fab_h_t_tilde, dim=0)
-            fab_h_src = torch.stack(fab_h_src)
-            fab_mask = torch.stack(fab_mask)
-            # |fab_input| = (current_batch_size, 1)
-            # |fab_hidden| = (n_layers, current_batch_size, hidden_size)
-            # |fab_cell| = (n_layers, current_batch_size, hidden_size)
+            # |fab_input|     = (current_batch_size, 1)
+            # |fab_hidden|    = (n_layers, current_batch_size, hidden_size)
+            # |fab_cell|      = (n_layers, current_batch_size, hidden_size)
+            # |fab_h_src|     = (current_batch_size, length, hidden_size)
+            # |fab_mask|      = (current_batch_size, length)
             # |fab_h_t_tilde| = (current_batch_size, 1, hidden_size)
-            # |fab_h_src| = (current_batch_size, length, hidden_size)
-            # |fab_mask| = (current_batch_size, length)
 
             emb_t = self.emb_dec(fab_input)
             # |emb_t| = (current_batch_size, 1, word_vec_dim)
@@ -469,39 +480,38 @@ class Seq2Seq(nn.Module):
             # |y_hat| = (current_batch_size, 1, output_size)
 
             # separate the result for each sample.
-            # fab_hidden[:, from_index:to_index, :] = (n_layers, beam_size, hidden_size)
-            # fab_cell[:, from_index:to_index, :] = (n_layers, beam_size, hidden_size)
-            # fab_h_t_tilde[from_index:to_index] = (beam_size, 1, hidden_size)
+            # fab_hidden[:, begin:end, :] = (n_layers, beam_size, hidden_size)
+            # fab_cell[:, begin:end, :]   = (n_layers, beam_size, hidden_size)
+            # fab_h_t_tilde[begin:end]    = (beam_size, 1, hidden_size)
             cnt = 0
-            for space in spaces:
-                if space.is_done() == 0:
+            for board in boards:
+                if board.is_done() == 0:
                     # Decide a range of each sample.
-                    from_index = cnt * beam_size
-                    to_index = from_index + beam_size
+                    begin = cnt * beam_size
+                    end = begin + beam_size
 
                     # pick k-best results for each sample.
-                    space.collect_result(
-                        y_hat[from_index:to_index],
-                        [
-                            ('hidden_state', fab_hidden[:, from_index:to_index, :]),
-                            ('cell_state', fab_cell[:, from_index:to_index, :]),
-                            ('h_t_1_tilde', fab_h_t_tilde[from_index:to_index]),
-                        ],
+                    board.collect_result(
+                        y_hat[begin:end],
+                        {
+                            'hidden_state': fab_hidden[:, begin:end, :],
+                            'cell_state'  : fab_cell[:, begin:end, :],
+                            'h_t_1_tilde' : fab_h_t_tilde[begin:end],
+                        },
                     )
                     cnt += 1
 
-            done_cnt = [space.is_done() for space in spaces]
+            done_cnt = [board.is_done() for board in boards]
             length += 1
 
         # pick n-best hypothesis.
-        batch_sentences = []
-        batch_probs = []
+        batch_sentences, batch_probs = [], []
 
         # Collect the results.
-        for i, space in enumerate(spaces):
-            sentences, probs = space.get_n_best(n_best, length_penalty=length_penalty)
+        for i, board in enumerate(boards):
+            sentences, probs = board.get_n_best(n_best, length_penalty=length_penalty)
 
             batch_sentences += [sentences]
-            batch_probs += [probs]
+            batch_probs     += [probs]
 
         return batch_sentences, batch_probs
