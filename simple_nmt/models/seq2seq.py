@@ -326,13 +326,13 @@ class Seq2Seq(nn.Module):
 
         # Fill a vector, which has 'batch_size' dimension, with BOS value.
         y = x.new(batch_size, 1).zero_() + data_loader.BOS
-        is_undone = x.new_ones(batch_size, 1).float()
+        is_decoding = x.new_ones(batch_size, 1).bool()
         decoder_hidden = h_0_tgt
         h_t_tilde, y_hats, indice = None, [], []
         
-        # Repeat a loop while sum of 'is_undone' flag is bigger than 0,
+        # Repeat a loop while sum of 'is_decoding' flag is bigger than 0,
         # or current time-step is smaller than maximum length.
-        while is_undone.sum() > 0 and len(indice) < max_length:
+        while is_decoding.sum() > 0 and len(indice) < max_length:
             # Unlike training procedure,
             # take the last time-step's output during the inference.
             emb_t = self.emb_dec(y)
@@ -356,10 +356,10 @@ class Seq2Seq(nn.Module):
                 # Take a random sampling based on the multinoulli distribution.
                 y = torch.multinomial(y_hat.exp().view(batch_size, -1), 1)
             # Put PAD if the sample is done.
-            y = y.masked_fill_((1. - is_undone).bool(), data_loader.PAD)
-            is_undone = is_undone * torch.ne(y, data_loader.EOS).float()
+            y = y.masked_fill_(~is_decoding, data_loader.PAD)
+            is_decoding = is_decoding * torch.ne(y, data_loader.EOS)
             # |y| = (batch_size, 1)
-            # |is_undone| = (batch_size, 1)
+            # |is_decoding| = (batch_size, 1)
             indice += [y]
 
         y_hats = torch.cat(y_hats, dim=1)
