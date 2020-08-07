@@ -216,6 +216,30 @@ class Seq2Seq(nn.Module):
 
         return (new_hiddens, new_cells)
 
+    def fast_merge_encoder_hiddens(self, encoder_hiddens):
+        # Merge bidirectional to uni-directional
+        # We need to convert size from (n_layers * 2, batch_size, hidden_size / 2)
+        # to (n_layers, batch_size, hidden_size).
+        # Thus, the converting operation will not working with just 'view' method.
+        h_0_tgt, c_0_tgt = encoder_hiddens
+        batch_size = h_0_tgt.size(1)
+
+        h_0_tgt = h_0_tgt.transpose(0, 1).contiguous().view(batch_size,
+                                                            -1,
+                                                            self.hidden_size
+                                                            ).transpose(0, 1).contiguous()
+        c_0_tgt = c_0_tgt.transpose(0, 1).contiguous().view(batch_size,
+                                                            -1,
+                                                            self.hidden_size
+                                                            ).transpose(0, 1).contiguous()
+        # You can use 'merge_encoder_hiddens' method, instead of using above 3 lines.
+        # 'merge_encoder_hiddens' method works with non-parallel way.
+        # h_0_tgt = self.merge_encoder_hiddens(h_0_tgt)
+
+        # |h_src| = (batch_size, length, hidden_size)
+        # |h_0_tgt| = (n_layers, batch_size, hidden_size)
+        return h_0_tgt, c_0_tgt
+
     def forward(self, src, tgt):
         batch_size = tgt.size(0)
 
@@ -242,27 +266,7 @@ class Seq2Seq(nn.Module):
         # |h_src| = (batch_size, length, hidden_size)
         # |h_0_tgt| = (n_layers * 2, batch_size, hidden_size / 2)
 
-        # Merge bidirectional to uni-directional
-        # We need to convert size from (n_layers * 2, batch_size, hidden_size / 2)
-        # to (n_layers, batch_size, hidden_size).
-        # Thus, the converting operation will not working with just 'view' method.
-        h_0_tgt, c_0_tgt = h_0_tgt
-        h_0_tgt = h_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        c_0_tgt = c_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        # You can use 'merge_encoder_hiddens' method, instead of using above 3 lines.
-        # 'merge_encoder_hiddens' method works with non-parallel way.
-        # h_0_tgt = self.merge_encoder_hiddens(h_0_tgt)
-
-        # |h_src| = (batch_size, length, hidden_size)
-        # |h_0_tgt| = (n_layers, batch_size, hidden_size)
-        h_0_tgt = (h_0_tgt, c_0_tgt)
-
+        h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
         emb_tgt = self.emb_dec(tgt)
         # |emb_tgt| = (batch_size, length, word_vec_dim)
         h_tilde = []
@@ -318,16 +322,7 @@ class Seq2Seq(nn.Module):
 
         emb_src = self.emb_src(x)
         h_src, h_0_tgt = self.encoder((emb_src, x_length))
-        h_0_tgt, c_0_tgt = h_0_tgt
-        h_0_tgt = h_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        c_0_tgt = c_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        h_0_tgt = (h_0_tgt, c_0_tgt)
+        h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
 
         # Fill a vector, which has 'batch_size' dimension, with BOS value.
         y = x.new(batch_size, 1).zero_() + data_loader.BOS
@@ -374,13 +369,14 @@ class Seq2Seq(nn.Module):
 
         return y_hats, indice
 
-    def batch_beam_search(self,
-                          src,
-                          beam_size=5,
-                          max_length=255,
-                          n_best=1,
-                          length_penalty=.2
-                          ):
+    def batch_beam_search(
+        self,
+        src,
+        beam_size=5,
+        max_length=255,
+        n_best=1,
+        length_penalty=.2
+    ):
         mask, x_length = None, None
 
         if isinstance(src, tuple):
@@ -394,17 +390,7 @@ class Seq2Seq(nn.Module):
         emb_src = self.emb_src(x)
         h_src, h_0_tgt = self.encoder((emb_src, x_length))
         # |h_src| = (batch_size, length, hidden_size)
-        h_0_tgt, c_0_tgt = h_0_tgt
-        h_0_tgt = h_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        c_0_tgt = c_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        # |h_0_tgt| = (n_layers, batch_size, hidden_size)
-        h_0_tgt = (h_0_tgt, c_0_tgt)
+        h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
 
         # initialize 'SingleBeamSearchSpace' as many as batch_size
         spaces = [SingleBeamSearchSpace(
