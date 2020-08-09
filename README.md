@@ -15,33 +15,12 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 ## Pre-requisite
 
 - Python 3.6 or higher
-- PyTorch 1.1 or higher
-- TorchText 0.3 or higher
+- PyTorch 1.6 or higher
+- TorchText 0.5 or higher
 
 ## Usage
 
-### Split corpus to train-set and valid-set
-
-```bash
-$ python ./data/build_corpus.py -h
-usage: build_corpus.py [-h] --input INPUT --lang LANG --output OUTPUT
-                       [--valid_ratio VALID_RATIO] [--test_ratio TEST_RATIO]
-                       [--no_shuffle]
-```
-
-example usage:
-
-```bash
-$ ls ./data
-corpus.en  corpus.ko
-$ python ./data/build_corpus.py --input ./data/corpus --lang enko --output ./data/corpus
-total src lines: 384105
-total tgt lines: 384105
-write 7682 lines to ./data/corpus.valid.en
-write 7682 lines to ./data/corpus.valid.ko
-write 376423 lines to ./data/corpus.train.en
-write 376423 lines to ./data/corpus.train.ko
-```
+I recommend to use corpora from [AI-Hub](http://www.aihub.or.kr/), if you are trying to build Kor/Eng machine translation.
 
 ### Training
 
@@ -55,14 +34,14 @@ usage: train.py [-h] --model_fn MODEL_FN --train TRAIN --valid VALID --lang
                 [--hidden_size HIDDEN_SIZE] [--n_layers N_LAYERS]
                 [--max_grad_norm MAX_GRAD_NORM] [--use_adam] [--lr LR]
                 [--lr_step LR_STEP] [--lr_gamma LR_GAMMA]
-                [--lr_decay_start LR_DECAY_START] [--use_noam_decay]
-                [--lr_n_warmup_steps LR_N_WARMUP_STEPS] [--rl_lr RL_LR]
-                [--rl_n_samples RL_N_SAMPLES] [--rl_n_epochs RL_N_EPOCHS]
-                [--rl_init_epoch RL_INIT_EPOCH] [--rl_n_gram RL_N_GRAM]
-                [--dsl] [--lm_n_epochs LM_N_EPOCHS]
-                [--lm_batch_size LM_BATCH_SIZE] [--dsl_n_epochs DSL_N_EPOCHS]
-                [--dsl_lambda DSL_LAMBDA] [--use_transformer]
-                [--n_splits N_SPLITS]
+                [--lr_decay_start LR_DECAY_START]
+                [--iteration_per_update ITERATION_PER_UPDATE]
+                [--use_noam_decay] [--lr_warmup_ratio LR_WARMUP_RATIO]
+                [--rl_lr RL_LR] [--rl_n_samples RL_N_SAMPLES]
+                [--rl_n_epochs RL_N_EPOCHS] [--rl_n_gram RL_N_GRAM] [--dsl]
+                [--lm_n_epochs LM_N_EPOCHS] [--lm_batch_size LM_BATCH_SIZE]
+                [--dsl_n_epochs DSL_N_EPOCHS] [--dsl_lambda DSL_LAMBDA]
+                [--use_transformer] [--n_splits N_SPLITS]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -102,20 +81,20 @@ optional arguments:
   --lr_gamma LR_GAMMA   Learning rate decay rate. Default=0.5
   --lr_decay_start LR_DECAY_START
                         Learning rate decay start at. Default=10
+  --iteration_per_update ITERATION_PER_UPDATE
+                        Number of feed-forward iterations for one parameter
+                        update. Default=1
   --use_noam_decay      Use Noam learning rate decay, which is described in
                         "Attention is All You Need" paper.
-  --lr_n_warmup_steps LR_N_WARMUP_STEPS
-                        Number of warming up steps for Noam learning rate
-                        decay. Default=48000
+  --lr_warmup_ratio LR_WARMUP_RATIO
+                        Ratio of warming up steps from total iterations for
+                        Noam learning rate decay. Default=0.1
   --rl_lr RL_LR         Learning rate for reinforcement learning. Default=0.01
   --rl_n_samples RL_N_SAMPLES
                         Number of samples to get baseline. Default=1
   --rl_n_epochs RL_N_EPOCHS
                         Number of epochs for reinforcement learning.
                         Default=10
-  --rl_init_epoch RL_INIT_EPOCH
-                        Set initial epoch number for RL, which can be useful
-                        in continue training. Default=1
   --rl_n_gram RL_N_GRAM
                         Maximum number of tokens to calculate BLEU for
                         reinforcement learning. Default=6
@@ -150,13 +129,7 @@ $ python train.py --model_fn ./models/enko.pth --train ./data/corpus.train --val
 Using Noam learning rate decay for training:
 
 ```bash
-$ python train.py --model_fn ./models/enko.transformer.pth --train ./data/big_corpus.train --valid ./data/big_corpus.valid --lang enko --gpu_id 0 --batch_size 64 --n_epochs 15 --dropout .1 --hidden_size 512 --n_layers 6 --max_grad_norm 1e+10 --use_adam --lr .0044 --use_noam_decay --lr_n_warmup_steps 48000 --use_transformer --n_splits 8
-```
-
-In case, using SGD for training -- I prefer this one:
-
-```bash
-python ./train.py --model_fn ./models/enko.transformer.sgd.pth --train ./data/big_corpus.train --valid ./data/big_corpus.valid --lang enko --gpu_id 0 --batch_size 80 --n_epochs 20 --dropout .1 --hidden_size 512 --n_layers 6 --max_grad_norm 2. --lr 1. --lr_step 1 --lr_gamma .8 --lr_decay_start 5 --use_transformer --n_splits 8
+$ python train.py --model_fn ./models/enko.pth --train ./data/corpus.train --valid ./data/corpus.valid --lang enko --gpu_id 0 --batch_size 32 --n_epochs 20 --hidden_size 1024 --n_layers 6 --use_adam --lr 1e-4 --lr_step 0 --rl_n_epochs 0 --iteration_per_update 50 --max_grad_norm 1e+4 --use_noam_decay --use_transformer --max_length 64 --lr_warmup_ratio .2
 ```
 
 You may need to change the argument parameters.
@@ -190,7 +163,7 @@ optional arguments:
 example usage:
 
 ```bash
-$ python translate.py --model ./model/enko.12.1.18-3.24.1.37-3.92.pth --gpu_id 0 --batch_size 128 --beam_size 8
+$ python translate.py --model ./model/enko.12.1.18-3.24.1.37-3.92.pth --gpu_id -1 --batch_size 128 --beam_size 8 < test.txt > test.result.txt
 ```
 
 You may also need to change the argument parameters.
