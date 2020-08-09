@@ -65,7 +65,10 @@ class MaximumLikelihoodEstimationEngine(Engine):
             )
             backward_target = loss.div(y.size(0)).div(engine.config.iteration_per_update)
 
-        engine.scaler.scale(backward_target).backward()
+        if engine.config.gpu_id >= 0:
+            engine.scaler.scale(backward_target).backward()
+        else:
+            backward_target.backward()
 
         word_count = int(mini_batch.tgt[1].sum())
         p_norm = float(get_parameter_norm(engine.model.parameters()))
@@ -78,9 +81,12 @@ class MaximumLikelihoodEstimationEngine(Engine):
                 engine.config.max_grad_norm,
             )
             # Take a step of gradient descent.
-            # Use scaler instead of engine.optimizer.step()
-            engine.scaler.step(engine.optimizer)
-            engine.scaler.update()
+            if engine.config.gpu_id >= 0:
+                # Use scaler instead of engine.optimizer.step() if using GPU.
+                engine.scaler.step(engine.optimizer)
+                engine.scaler.update()
+            else:
+                engine.optimizer.step()
 
             if engine.config.use_noam_decay and engine.lr_scheduler is not None:
                 engine.lr_scheduler.step()
