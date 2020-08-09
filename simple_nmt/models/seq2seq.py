@@ -4,7 +4,7 @@ from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 
 import simple_nmt.data_loader as data_loader
-from simple_nmt.search import SingleBeamSearchSpace
+from simple_nmt.search import SingleBeamSearchBoard
 
 
 class Attention(nn.Module):
@@ -216,6 +216,30 @@ class Seq2Seq(nn.Module):
 
         return (new_hiddens, new_cells)
 
+    def fast_merge_encoder_hiddens(self, encoder_hiddens):
+        # Merge bidirectional to uni-directional
+        # We need to convert size from (n_layers * 2, batch_size, hidden_size / 2)
+        # to (n_layers, batch_size, hidden_size).
+        # Thus, the converting operation will not working with just 'view' method.
+        h_0_tgt, c_0_tgt = encoder_hiddens
+        batch_size = h_0_tgt.size(1)
+
+        h_0_tgt = h_0_tgt.transpose(0, 1).contiguous().view(batch_size,
+                                                            -1,
+                                                            self.hidden_size
+                                                            ).transpose(0, 1).contiguous()
+        c_0_tgt = c_0_tgt.transpose(0, 1).contiguous().view(batch_size,
+                                                            -1,
+                                                            self.hidden_size
+                                                            ).transpose(0, 1).contiguous()
+        # You can use 'merge_encoder_hiddens' method, instead of using above 3 lines.
+        # 'merge_encoder_hiddens' method works with non-parallel way.
+        # h_0_tgt = self.merge_encoder_hiddens(h_0_tgt)
+
+        # |h_src| = (batch_size, length, hidden_size)
+        # |h_0_tgt| = (n_layers, batch_size, hidden_size)
+        return h_0_tgt, c_0_tgt
+
     def forward(self, src, tgt):
         batch_size = tgt.size(0)
 
@@ -242,27 +266,7 @@ class Seq2Seq(nn.Module):
         # |h_src| = (batch_size, length, hidden_size)
         # |h_0_tgt| = (n_layers * 2, batch_size, hidden_size / 2)
 
-        # Merge bidirectional to uni-directional
-        # We need to convert size from (n_layers * 2, batch_size, hidden_size / 2)
-        # to (n_layers, batch_size, hidden_size).
-        # Thus, the converting operation will not working with just 'view' method.
-        h_0_tgt, c_0_tgt = h_0_tgt
-        h_0_tgt = h_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        c_0_tgt = c_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        # You can use 'merge_encoder_hiddens' method, instead of using above 3 lines.
-        # 'merge_encoder_hiddens' method works with non-parallel way.
-        # h_0_tgt = self.merge_encoder_hiddens(h_0_tgt)
-
-        # |h_src| = (batch_size, length, hidden_size)
-        # |h_0_tgt| = (n_layers, batch_size, hidden_size)
-        h_0_tgt = (h_0_tgt, c_0_tgt)
-
+        h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
         emb_tgt = self.emb_dec(tgt)
         # |emb_tgt| = (batch_size, length, word_vec_dim)
         h_tilde = []
@@ -318,26 +322,17 @@ class Seq2Seq(nn.Module):
 
         emb_src = self.emb_src(x)
         h_src, h_0_tgt = self.encoder((emb_src, x_length))
-        h_0_tgt, c_0_tgt = h_0_tgt
-        h_0_tgt = h_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        c_0_tgt = c_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        h_0_tgt = (h_0_tgt, c_0_tgt)
+        h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
 
         # Fill a vector, which has 'batch_size' dimension, with BOS value.
         y = x.new(batch_size, 1).zero_() + data_loader.BOS
-        is_undone = x.new_ones(batch_size, 1).float()
+        is_decoding = x.new_ones(batch_size, 1).bool()
         decoder_hidden = h_0_tgt
         h_t_tilde, y_hats, indice = None, [], []
         
-        # Repeat a loop while sum of 'is_undone' flag is bigger than 0,
+        # Repeat a loop while sum of 'is_decoding' flag is bigger than 0,
         # or current time-step is smaller than maximum length.
-        while is_undone.sum() > 0 and len(indice) < max_length:
+        while is_decoding.sum() > 0 and len(indice) < max_length:
             # Unlike training procedure,
             # take the last time-step's output during the inference.
             emb_t = self.emb_dec(y)
@@ -361,10 +356,10 @@ class Seq2Seq(nn.Module):
                 # Take a random sampling based on the multinoulli distribution.
                 y = torch.multinomial(y_hat.exp().view(batch_size, -1), 1)
             # Put PAD if the sample is done.
-            y = y.masked_fill_((1. - is_undone).bool(), data_loader.PAD)
-            is_undone = is_undone * torch.ne(y, data_loader.EOS).float()
+            y = y.masked_fill_(~is_decoding, data_loader.PAD)
+            is_decoding = is_decoding * torch.ne(y, data_loader.EOS)
             # |y| = (batch_size, 1)
-            # |is_undone| = (batch_size, 1)
+            # |is_decoding| = (batch_size, 1)
             indice += [y]
 
         y_hats = torch.cat(y_hats, dim=1)
@@ -374,13 +369,14 @@ class Seq2Seq(nn.Module):
 
         return y_hats, indice
 
-    def batch_beam_search(self,
-                          src,
-                          beam_size=5,
-                          max_length=255,
-                          n_best=1,
-                          length_penalty=.2
-                          ):
+    def batch_beam_search(
+        self,
+        src,
+        beam_size=5,
+        max_length=255,
+        n_best=1,
+        length_penalty=.2
+    ):
         mask, x_length = None, None
 
         if isinstance(src, tuple):
@@ -394,30 +390,29 @@ class Seq2Seq(nn.Module):
         emb_src = self.emb_src(x)
         h_src, h_0_tgt = self.encoder((emb_src, x_length))
         # |h_src| = (batch_size, length, hidden_size)
-        h_0_tgt, c_0_tgt = h_0_tgt
-        h_0_tgt = h_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        c_0_tgt = c_0_tgt.transpose(0, 1).contiguous().view(batch_size,
-                                                            -1,
-                                                            self.hidden_size
-                                                            ).transpose(0, 1).contiguous()
-        # |h_0_tgt| = (n_layers, batch_size, hidden_size)
-        h_0_tgt = (h_0_tgt, c_0_tgt)
+        h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
 
-        # initialize 'SingleBeamSearchSpace' as many as batch_size
-        spaces = [SingleBeamSearchSpace(
+        # initialize 'SingleBeamSearchBoard' as many as batch_size
+        boards = [SingleBeamSearchBoard(
             h_src.device,
-            [
-                ('hidden_state', h_0_tgt[0][:, i, :].unsqueeze(1), 1),
-                ('cell_state', h_0_tgt[1][:, i, :].unsqueeze(1), 1),
-                ('h_t_1_tilde', None, 0),
-            ],
+            {
+                'hidden_state': {
+                    'init_status': h_0_tgt[0][:, i, :].unsqueeze(1),
+                    'batch_dim_index': 1,
+                },
+                'cell_state': {
+                    'init_status': h_0_tgt[1][:, i, :].unsqueeze(1),
+                    'batch_dim_index': 1,
+                },
+                'h_t_1_tilde': {
+                    'init_status': None,
+                    'batch_dim_index': 0,
+                },
+            },
             beam_size=beam_size,
             max_length=max_length,
         ) for i in range(batch_size)]
-        done_cnt = [space.is_done() for space in spaces]
+        done_cnt = [board.is_done() for board in boards]
 
         length = 0
         # Run loop while sum of 'done_cnt' is smaller than batch_size, 
@@ -434,36 +429,38 @@ class Seq2Seq(nn.Module):
             
             # Build fabricated mini-batch in non-parallel way.
             # This may cause a bottle-neck.
-            for i, space in enumerate(spaces):
+            for i, board in enumerate(boards):
                 # Batchify if the inference for the sample is still not finished.
-                if space.is_done() == 0:
-                    y_hat_, hidden_, cell_, h_t_tilde_ = space.get_batch()
+                if board.is_done() == 0:
+                    y_hat_i, prev_status = board.get_batch()
+                    hidden_i    = prev_status['hidden_state']
+                    cell_i      = prev_status['cell_state']
+                    h_t_tilde_i = prev_status['h_t_1_tilde']
 
-                    fab_input += [y_hat_]
-                    fab_hidden += [hidden_]
-                    fab_cell += [cell_]
-                    if h_t_tilde_ is not None:
-                        fab_h_t_tilde += [h_t_tilde_]
+                    fab_input  += [y_hat_i]
+                    fab_hidden += [hidden_i]
+                    fab_cell   += [cell_i]
+                    fab_h_src  += [h_src[i, :, :]] * beam_size
+                    fab_mask   += [mask[i, :]] * beam_size
+                    if h_t_tilde_i is not None:
+                        fab_h_t_tilde += [h_t_tilde_i]
                     else:
                         fab_h_t_tilde = None
 
-                    fab_h_src += [h_src[i, :, :]] * beam_size
-                    fab_mask += [mask[i, :]] * beam_size
-
             # Now, concatenate list of tensors.
-            fab_input = torch.cat(fab_input, dim=0)
+            fab_input  = torch.cat(fab_input,  dim=0)
             fab_hidden = torch.cat(fab_hidden, dim=1)
-            fab_cell = torch.cat(fab_cell, dim=1)
+            fab_cell   = torch.cat(fab_cell,   dim=1)
+            fab_h_src  = torch.stack(fab_h_src)
+            fab_mask   = torch.stack(fab_mask)
             if fab_h_t_tilde is not None:
                 fab_h_t_tilde = torch.cat(fab_h_t_tilde, dim=0)
-            fab_h_src = torch.stack(fab_h_src)
-            fab_mask = torch.stack(fab_mask)
-            # |fab_input| = (current_batch_size, 1)
-            # |fab_hidden| = (n_layers, current_batch_size, hidden_size)
-            # |fab_cell| = (n_layers, current_batch_size, hidden_size)
+            # |fab_input|     = (current_batch_size, 1)
+            # |fab_hidden|    = (n_layers, current_batch_size, hidden_size)
+            # |fab_cell|      = (n_layers, current_batch_size, hidden_size)
+            # |fab_h_src|     = (current_batch_size, length, hidden_size)
+            # |fab_mask|      = (current_batch_size, length)
             # |fab_h_t_tilde| = (current_batch_size, 1, hidden_size)
-            # |fab_h_src| = (current_batch_size, length, hidden_size)
-            # |fab_mask| = (current_batch_size, length)
 
             emb_t = self.emb_dec(fab_input)
             # |emb_t| = (current_batch_size, 1, word_vec_dim)
@@ -483,39 +480,38 @@ class Seq2Seq(nn.Module):
             # |y_hat| = (current_batch_size, 1, output_size)
 
             # separate the result for each sample.
-            # fab_hidden[:, from_index:to_index, :] = (n_layers, beam_size, hidden_size)
-            # fab_cell[:, from_index:to_index, :] = (n_layers, beam_size, hidden_size)
-            # fab_h_t_tilde[from_index:to_index] = (beam_size, 1, hidden_size)
+            # fab_hidden[:, begin:end, :] = (n_layers, beam_size, hidden_size)
+            # fab_cell[:, begin:end, :]   = (n_layers, beam_size, hidden_size)
+            # fab_h_t_tilde[begin:end]    = (beam_size, 1, hidden_size)
             cnt = 0
-            for space in spaces:
-                if space.is_done() == 0:
+            for board in boards:
+                if board.is_done() == 0:
                     # Decide a range of each sample.
-                    from_index = cnt * beam_size
-                    to_index = from_index + beam_size
+                    begin = cnt * beam_size
+                    end = begin + beam_size
 
                     # pick k-best results for each sample.
-                    space.collect_result(
-                        y_hat[from_index:to_index],
-                        [
-                            ('hidden_state', fab_hidden[:, from_index:to_index, :]),
-                            ('cell_state', fab_cell[:, from_index:to_index, :]),
-                            ('h_t_1_tilde', fab_h_t_tilde[from_index:to_index]),
-                        ],
+                    board.collect_result(
+                        y_hat[begin:end],
+                        {
+                            'hidden_state': fab_hidden[:, begin:end, :],
+                            'cell_state'  : fab_cell[:, begin:end, :],
+                            'h_t_1_tilde' : fab_h_t_tilde[begin:end],
+                        },
                     )
                     cnt += 1
 
-            done_cnt = [space.is_done() for space in spaces]
+            done_cnt = [board.is_done() for board in boards]
             length += 1
 
         # pick n-best hypothesis.
-        batch_sentences = []
-        batch_probs = []
+        batch_sentences, batch_probs = [], []
 
         # Collect the results.
-        for i, space in enumerate(spaces):
-            sentences, probs = space.get_n_best(n_best, length_penalty=length_penalty)
+        for i, board in enumerate(boards):
+            sentences, probs = board.get_n_best(n_best, length_penalty=length_penalty)
 
             batch_sentences += [sentences]
-            batch_probs += [probs]
+            batch_probs     += [probs]
 
         return batch_sentences, batch_probs

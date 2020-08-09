@@ -121,7 +121,10 @@ if __name__ == '__main__':
         if config.lang == train_config.lang:
             is_reverse = False
         else:
-            is_reverse = True
+            if config.dsl:
+                is_reverse = True
+            else:
+                raise Error('You cannot translate %s with this model file.' % config.lang)
 
         if not is_reverse:
             # Load vocabularies from the model.
@@ -143,7 +146,7 @@ if __name__ == '__main__':
     output_size = len(loader.tgt.vocab)
 
     # Declare sequence-to-sequence model.
-    if train_config.use_transformer:
+    if not train_config.dsl and train_config.use_transformer:
         model = Transformer(
             input_size,
             train_config.hidden_size,

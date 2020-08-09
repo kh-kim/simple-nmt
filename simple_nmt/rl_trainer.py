@@ -2,11 +2,13 @@
 from nltk.translate.gleu_score import sentence_gleu as score_func
 
 import numpy as np
-import torch
 
+import torch
 from torch import optim
-import torch.nn.utils as torch_utils
 from torch.nn import functional as F
+import torch.nn.utils as torch_utils
+# from torch.cuda.amp import autocast
+# from torch.cuda.amp import GradScaler
 
 from ignite.engine import Engine
 from ignite.engine import Events
@@ -25,7 +27,7 @@ VERBOSE_BATCH_WISE = 2
 class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
     @staticmethod
-    def get_reward(y_hat, y, n_gram=6):
+    def _get_reward(y_hat, y, n_gram=6):
         # This method gets the reward based on the sampling result and reference sentence.
         # For now, we uses GLEU in NLTK, but you can used your own well-defined reward function.
         # In addition, GLEU is variation of BLEU, and it is more fit to reinforcement learning.
@@ -64,7 +66,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
 
     @staticmethod
-    def get_gradient(y_hat, indice, risk=1):
+    def _get_loss(y_hat, indice, risk=1):
         # |indice| = (batch_size, length)
         # |y_hat| = (batch_size, length, output_size)
         # |risk| = (batch_size,)
@@ -93,7 +95,6 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         ).view(batch_size, -1).sum(dim=-1)
 
         loss = (log_prob * risk).sum()
-        loss.backward()
 
         return loss
 
@@ -101,8 +102,9 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
     def train(engine, mini_batch):
         # You have to reset the gradients of all model parameters
         # before to take another step in gradient descent.
-        engine.model.train()        
-        engine.optimizer.zero_grad()
+        engine.model.train()
+        if engine.state.iteration % engine.config.iteration_per_update == 1:
+            engine.optimizer.zero_grad()
 
         device = next(engine.model.parameters()).device
         mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
@@ -121,20 +123,22 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
             is_greedy=False,
             max_length=engine.config.max_length
         )
-        # Based on the result of sampling, get reward.
-        actor_reward = MinimumRiskTrainingEngine.get_reward(
-            indice,
-            y,
-            n_gram=engine.config.rl_n_gram
-        )
-        # |y_hat| = (batch_size, length, output_size)
-        # |indice| = (batch_size, length)
-        # |actor_reward| = (batch_size)
 
-        # Take samples as many as n_samples, and get average rewards for them.
-        # I figured out that n_samples = 1 would be enough.
-        baseline = []
         with torch.no_grad():
+            # Based on the result of sampling, get reward.
+            actor_reward = MinimumRiskTrainingEngine._get_reward(
+                indice,
+                y,
+                n_gram=engine.config.rl_n_gram
+            )
+            # |y_hat| = (batch_size, length, output_size)
+            # |indice| = (batch_size, length)
+            # |actor_reward| = (batch_size)
+
+            # Take samples as many as n_samples, and get average rewards for them.
+            # I figured out that n_samples = 1 would be enough.
+            baseline = []
+
             for _ in range(engine.config.rl_n_samples):
                 _, sampled_indice = engine.model.search(
                     x,
@@ -142,7 +146,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                     max_length=engine.config.max_length,
                 )
                 baseline += [
-                    MinimumRiskTrainingEngine.get_reward(
+                    MinimumRiskTrainingEngine._get_reward(
                         sampled_indice,
                         y,
                         n_gram=engine.config.rl_n_gram,
@@ -152,35 +156,38 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
             baseline = torch.stack(baseline).mean(dim=0)
             # |baseline| = (n_samples, batch_size) --> (batch_size)
 
-        # Now, we have relatively expected cumulative reward.
-        # Which score can be drawn from actor_reward subtracted by baseline.
-        risk = (-actor_reward) - (-baseline)
-        # |risk| = (batch_size)
+            # Now, we have relatively expected cumulative reward.
+            # Which score can be drawn from actor_reward subtracted by baseline.
+            risk = (-actor_reward) - (-baseline)
+            # |risk| = (batch_size)
 
         # calculate gradients with back-propagation
-        MinimumRiskTrainingEngine.get_gradient(
+        loss = MinimumRiskTrainingEngine._get_loss(
             y_hat,
             indice,
             risk=risk
         )
+        backward_target = loss.div(y.size(0)).div(engine.config.iteration_per_update)
+        backward_target.backward()
 
         p_norm = float(get_parameter_norm(engine.model.parameters()))
         g_norm = float(get_grad_norm(engine.model.parameters()))
 
-        # In orther to avoid gradient exploding, we apply gradient clipping.
-        torch_utils.clip_grad_norm_(
-            engine.model.parameters(),
-            engine.config.max_grad_norm,
-        )
-        # Take a step of gradient descent.
-        engine.optimizer.step()
+        if engine.state.iteration % engine.config.iteration_per_update == 0:
+            # In orther to avoid gradient exploding, we apply gradient clipping.
+            torch_utils.clip_grad_norm_(
+                engine.model.parameters(),
+                engine.config.max_grad_norm,
+            )
+            # Take a step of gradient descent.
+            engine.optimizer.step()
 
         return {
             'actor': float(actor_reward.mean()),
             'baseline': float(baseline.mean()),
             'risk': float(risk.mean()),
-            '|param|': p_norm,
-            '|g_param|': g_norm,
+            '|param|': p_norm if not np.isnan(p_norm) and not np.isinf(p_norm) else 0.,
+            '|g_param|': g_norm if not np.isnan(g_norm) and not np.isinf(g_norm) else 0.,
         }
 
     @staticmethod
@@ -204,7 +211,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
             )
             # |y_hat| = (batch_size, length, output_size)
             # |indice| = (batch_size, length)
-            reward = MinimumRiskTrainingEngine.get_reward(
+            reward = MinimumRiskTrainingEngine._get_reward(
                 indice,
                 y,
                 n_gram=engine.config.rl_n_gram,

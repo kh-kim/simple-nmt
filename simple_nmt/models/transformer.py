@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 import simple_nmt.data_loader as data_loader
-from simple_nmt.search import SingleBeamSearchSpace
+from simple_nmt.search import SingleBeamSearchBoard
 
 
 class Attention(nn.Module):
@@ -342,13 +342,13 @@ class Transformer(nn.Module):
         # Fill a vector, which has 'batch_size' dimension, with BOS value.
         y_t_1 = x.new(batch_size, 1).zero_() + data_loader.BOS
         # |y_t_1| = (batch_size, 1)
-        is_undone = x.new_ones(batch_size, 1).float()
+        is_decoding = x.new_ones(batch_size, 1).bool()
 
         prevs = [None for _ in range(len(self.decoder._modules) + 1)]
         y_hats, indice = [], []
-        # Repeat a loop while sum of 'is_undone' flag is bigger than 0,
+        # Repeat a loop while sum of 'is_decoding' flag is bigger than 0,
         # or current time-step is smaller than maximum length.
-        while is_undone.sum() > 0 and len(indice) < max_length:
+        while is_decoding.sum() > 0 and len(indice) < max_length:
             # Unlike training procedure,
             # take the last time-step's output during the inference.
             h_t = self.emb_dropout(
@@ -360,17 +360,17 @@ class Transformer(nn.Module):
             else:
                 prevs[0] = torch.cat([prevs[0], h_t], dim=1)
 
-            for layer_idx, block in enumerate(self.decoder._modules.values()):
-                prev = prevs[layer_idx]
+            for layer_index, block in enumerate(self.decoder._modules.values()):
+                prev = prevs[layer_index]
                 # |prev| = (batch_size, m, hidden_size)
 
                 h_t, _, _, _ = block(h_t, z, mask_dec, prev)
                 # |h_t| = (batch_size, 1, hidden_size)
 
-                if prevs[layer_idx + 1] is None:
-                    prevs[layer_idx + 1] = h_t
+                if prevs[layer_index + 1] is None:
+                    prevs[layer_index + 1] = h_t
                 else:
-                    prevs[layer_idx + 1] = torch.cat([prevs[layer_idx + 1], h_t], dim=1)
+                    prevs[layer_index + 1] = torch.cat([prevs[layer_index + 1], h_t], dim=1)
 
             y_hat_t = self.softmax(self.generator(h_t))
             # |y_hat_t| = (batch_size, 1, output_size)
@@ -383,12 +383,12 @@ class Transformer(nn.Module):
                 y_t_1 = torch.multinomial(y_hat_t.exp().view(x.size(0), -1), 1)
             # Put PAD if the sample is done.
             y_t_1 = y_t_1.masked_fill_(
-                (1. - is_undone).bool(),
+                ~is_decoding,
                 data_loader.PAD,
             )
-            is_undone = is_undone * torch.ne(y_t_1, data_loader.EOS).float()
+            is_decoding = is_decoding * torch.ne(y_t_1, data_loader.EOS)
             # |y| = (batch_size, 1)
-            # |is_undone| = (batch_size, 1)
+            # |is_decoding| = (batch_size, 1)
             indice += [y_t_1]
 
         y_hats = torch.cat(y_hats, dim=1)
@@ -404,10 +404,11 @@ class Transformer(nn.Module):
         beam_size=5,
         max_length=255,
         n_best=1,
-        length_penalty=.2
+        length_penalty=.2,
     ):
         # |x[0]| = (batch_size, n)
         batch_size = x[0].size(0)
+        n_dec_layers = len(self.decoder._modules)
 
         mask = self._generate_mask(x[0], x[1])
         # |mask| = (batch_size, n)
@@ -422,46 +423,65 @@ class Transformer(nn.Module):
         z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
-        spaces = [SingleBeamSearchSpace(
-            z.device,
-            [('prev_state_%d' % j, None, 0) for j in range(len(self.decoder._modules) + 1)],
-            beam_size=beam_size,
-            max_length=max_length,
-        ) for i in range(batch_size)]
-        done_cnt = [space.is_done() for space in spaces]
+        prev_status_config = {}
+        for layer_index in range(n_dec_layers + 1):
+            prev_status_config['prev_state_%d' % layer_index] = {
+                'init_status': None,
+                'batch_dim_index': 0,
+            }
+        # Example of prev_status_config:
+        # prev_status_config = {
+        #     'prev_state_0': {
+        #         'init_status': None,
+        #         'batch_dim_index': 0,
+        #     },
+        #     'prev_state_1': {
+        #         'init_status': None,
+        #         'batch_dim_index': 0,
+        #     },
+        #     ...
+        # }
+
+        boards = [
+            SingleBeamSearchBoard(
+                z.device,
+                prev_status_config,
+                beam_size=beam_size,
+                max_length=max_length,
+            ) for i in range(batch_size)
+        ]
+        done_cnt = [board.is_done() for board in boards]
 
         length = 0
         while sum(done_cnt) < batch_size and length <= max_length:
             fab_input, fab_z, fab_mask = [], [], []
-            fab_prevs = [[] for _ in range(len(self.decoder._modules) + 1)]
+            fab_prevs = [[] for _ in range(n_dec_layers + 1)]
 
-            for i, space in enumerate(spaces):
-                if space.is_done() == 0:
-                    tmp = space.get_batch()
+            for i, board in enumerate(boards): # i == sample_index in minibatch
+                if board.is_done() == 0:
+                    y_hat_i, prev_status = board.get_batch()
 
-                    y_hat_ = tmp[0]
-                    tmp = tmp[1:]
+                    fab_input += [y_hat_i                 ]
+                    fab_z     += [z[i].unsqueeze(0)       ] * beam_size
+                    fab_mask  += [mask_dec[i].unsqueeze(0)] * beam_size
 
-                    fab_input += [y_hat_]
-                    for j, prev_ in enumerate(tmp):
-                        if prev_ is not None:
-                            fab_prevs[j] += [prev_]
+                    for layer_index in range(n_dec_layers + 1):
+                        prev_i = prev_status['prev_state_%d' % layer_index]
+                        if prev_i is not None:
+                            fab_prevs[layer_index] += [prev_i]
                         else:
-                            fab_prevs[j] = None
-
-                    fab_z += [z[i].unsqueeze(0)] * beam_size
-                    fab_mask += [mask_dec[i].unsqueeze(0)] * beam_size
+                            fab_prevs[layer_index] = None
 
             fab_input = torch.cat(fab_input, dim=0)
-            for i, fab_prev in enumerate(fab_prevs):
+            fab_z     = torch.cat(fab_z,     dim=0)
+            fab_mask  = torch.cat(fab_mask,  dim=0)
+            for i, fab_prev in enumerate(fab_prevs): # i == layer_index
                 if fab_prev is not None:
                     fab_prevs[i] = torch.cat(fab_prev, dim=0)
-            fab_z = torch.cat(fab_z, dim=0)
-            fab_mask = torch.cat(fab_mask, dim=0)
             # |fab_input| = (current_batch_size, 1,)
-            # |fab_prevs[i]| = (current_batch_size, length, hidden_size)
-            # |fab_z| = (current_batch_size, n, hidden_size)
-            # |fab_mask| = (current_batch_size, 1, n)
+            # |fab_z|     = (current_batch_size, n, hidden_size)
+            # |fab_mask|  = (current_batch_size, 1, n)
+            # |fab_prevs[i] * n_layers| = (current_batch_size, length, hidden_size) * n_layers
 
             # Unlike training procedure,
             # take the last time-step's output during the inference.
@@ -474,53 +494,48 @@ class Transformer(nn.Module):
             else:
                 fab_prevs[0] = torch.cat([fab_prevs[0], h_t], dim=1)
 
-            for layer_idx, block in enumerate(self.decoder._modules.values()):
-                prev = fab_prevs[layer_idx]
+            for layer_index, block in enumerate(self.decoder._modules.values()):
+                prev = fab_prevs[layer_index]
                 # |prev| = (current_batch_size, m, hidden_size)
 
                 h_t, _, _, _ = block(h_t, fab_z, fab_mask, prev)
                 # |h_t| = (current_batch_size, 1, hidden_size)
 
-                if fab_prevs[layer_idx + 1] is None:
-                    fab_prevs[layer_idx + 1] = h_t
+                if fab_prevs[layer_index + 1] is None:
+                    fab_prevs[layer_index + 1] = h_t
                 else:
-                    fab_prevs[layer_idx + 1] = torch.cat(
-                        [fab_prevs[layer_idx + 1], h_t],
+                    fab_prevs[layer_index + 1] = torch.cat(
+                        [fab_prevs[layer_index + 1], h_t],
                         dim=1,
-                    )
+                    ) # Append new hidden state for each layer.
 
             y_hat_t = self.softmax(self.generator(h_t))
             # |y_hat_t| = (batch_size, 1, output_size)
 
-            # |fab_prevs[i][from_index:to_index]| = (beam_size, length, hidden_size)
+            # |fab_prevs[i][begin:end]| = (beam_size, length, hidden_size)
             cnt = 0
-            for space in spaces:
-                if space.is_done() == 0:
-                    from_index = cnt * beam_size
-                    to_index = from_index + beam_size
+            for board in boards:
+                if board.is_done() == 0:
+                    begin = cnt * beam_size
+                    end = begin + beam_size
 
-                    space.collect_result(
-                        y_hat_t[from_index:to_index],
-                        [
-                            (
-                                'prev_state_%d' % i,
-                                fab_prevs[i][from_index:to_index],
-                            ) for i in range(len(self.decoder._modules) + 1)
-                        ],
-                    )
+                    prev_status = {}
+                    for layer_index in range(n_dec_layers + 1):
+                        prev_status['prev_state_%d' % layer_index] = fab_prevs[layer_index][begin:end]
+
+                    board.collect_result(y_hat_t[begin:end], prev_status)
 
                     cnt += 1
 
-            done_cnt = [space.is_done() for space in spaces]
+            done_cnt = [board.is_done() for board in boards]
             length += 1
 
-        batch_sentences = []
-        batch_probs = []
+        batch_sentences, batch_probs = [], []
 
-        for i, space in enumerate(spaces):
-            sentences, probs = space.get_n_best(n_best, length_penalty=length_penalty)
+        for i, board in enumerate(boards):
+            sentences, probs = board.get_n_best(n_best, length_penalty=length_penalty)
 
             batch_sentences += [sentences]
-            batch_probs += [probs]
+            batch_probs     += [probs]
 
         return batch_sentences, batch_probs
