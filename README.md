@@ -20,6 +20,8 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 ## Usage
 
+I recommend to use corpora from [AI-Hub](http://www.aihub.or.kr/), if you are trying to build Kor/Eng machine translation.
+
 ### Training
 
 ```bash
