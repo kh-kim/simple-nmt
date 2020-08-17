@@ -358,10 +358,6 @@ class DualSupervisedTrainingEngine(Engine):
                     train_engine.optimizers[0].state_dict(),
                     train_engine.optimizers[1].state_dict(),
                 ],
-                'scheduler': [
-                    train_engine.lr_schedulers[0],
-                    train_engine.lr_schedulers[1],
-                ],
                 'config': config,
                 'src_vocab': vocabs[0],
                 'tgt_vocab': vocabs[1],

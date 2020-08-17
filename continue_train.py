@@ -4,6 +4,7 @@ import os.path
 import torch
 
 from train import define_argparser
+from train import main
 
 
 def overwrite_config(config, prev_config):
@@ -33,10 +34,8 @@ if __name__ == '__main__':
         config = overwrite_config(config, prev_config)
 
         model_weight = saved_data['model']
-        opt_weight = saved_data['opt']        
-        scheduler_weight = None #saved_data['scheduler']
+        opt_weight = saved_data['opt']
 
-        from train import main
-        main(config, model_weight=model_weight, opt_weight=opt_weight, scheduler_weight=scheduler_weight)
+        main(config, model_weight=model_weight, opt_weight=opt_weight)
     else:
         print('Cannot find file %s' % config.load_fn)
