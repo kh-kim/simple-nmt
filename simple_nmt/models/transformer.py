@@ -166,10 +166,11 @@ class DecoderBlock(nn.Module):
             batch_size = x.size(0)
             m = x.size(1)
 
-            fwd_mask = torch.triu(x.new_ones((m, m)), diagonal=1).bool()
-            # |fwd_mask| = (m, m)
-            fwd_mask = fwd_mask.unsqueeze(0).expand(batch_size, *fwd_mask.size())
-            # |fwd_mask| = (batch_size, m, m)
+            with torch.no_grad():
+                fwd_mask = torch.triu(x.new_ones((m, m)), diagonal=1).bool()
+                # |fwd_mask| = (m, m)
+                fwd_mask = fwd_mask.unsqueeze(0).expand(batch_size, *fwd_mask.size())
+                # |fwd_mask| = (batch_size, m, m)
 
             z = self.masked_attn_norm(x + self.masked_attn_dropout(
                 self.masked_attn(x, x, x, mask=fwd_mask)
@@ -215,6 +216,7 @@ class Transformer(nn.Module):
         n_dec_blocks=6,
         dropout_p=.1,
         use_leaky_relu=False,
+        max_length=512,
     ):
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -223,12 +225,15 @@ class Transformer(nn.Module):
         self.n_enc_blocks = n_enc_blocks
         self.n_dec_blocks = n_dec_blocks
         self.dropout_p = dropout_p
+        self.max_length = max_length
 
         super().__init__()
 
         self.emb_enc = nn.Embedding(input_size, hidden_size)
         self.emb_dec = nn.Embedding(output_size, hidden_size)
         self.emb_dropout = nn.Dropout(dropout_p)
+
+        self.pos_enc = self._generate_pos_enc(hidden_size, max_length)
 
         self.encoder = MySequential(
             *[EncoderBlock(
@@ -249,32 +254,34 @@ class Transformer(nn.Module):
         self.generator = nn.Linear(hidden_size, output_size)
         self.softmax = nn.LogSoftmax(dim=-1)
 
-    def _position_encoding(self, x, init_pos=0):
-        # |x| = (batch_size, n, hidden_size)
-        length, hidden_size = x.size(1), x.size(-1)
+    @torch.no_grad()
+    def _generate_pos_enc(self, hidden_size, max_length):
+        enc = torch.FloatTensor(max_length, hidden_size).zero_()
+        # |enc| = (max_length, hidden_size)
 
-        enc = x.new_zeros(x.shape[1:])
-        # |enc| = (n, hidden_size)
-        pos = init_pos + torch.arange(0, length, device=x.device).unsqueeze(-1)
-        dim = (
-            1e+4**torch.arange(0, hidden_size // 2, device=x.device).div(float(hidden_size))
-        ).unsqueeze(0)
-        # |pos| = (n, 1)
+        pos = torch.arange(0, max_length).unsqueeze(-1).float()
+        dim = torch.arange(0, hidden_size // 2).unsqueeze(0).float()
+        # |pos| = (max_length, 1)
         # |dim| = (1, hidden_size // 2)
 
-        assert enc[:, 0::2].size() == (pos / dim).size()
-        assert enc[:, 1::2].size() == (pos / dim).size()
+        enc[:, 0::2] = torch.sin(pos / 1e+4**dim.div(float(hidden_size)))
+        enc[:, 1::2] = torch.cos(pos / 1e+4**dim.div(float(hidden_size)))
 
-        pos = pos.float()
-        dim = dim.float()
+        return enc
 
-        enc[:, 0::2] = torch.sin(pos / dim)
-        enc[:, 1::2] = torch.cos(pos / dim)
+    def _position_encoding(self, x, init_pos=0):
+        # |x| = (batch_size, n, hidden_size)
+        # |self.pos_enc| = (max_length, hidden_size)
+        assert x.size(-1) == self.pos_enc.size(-1)
+        assert x.size(1) + init_pos <= self.max_length
 
-        x = x + enc
+        pos_enc = self.pos_enc[init_pos:init_pos + x.size(1)].unsqueeze(0)
+        # |pos_enc| = (1, n, hidden_size)
+        x = x + pos_enc.to(x.device)
 
         return x
 
+    @torch.no_grad()
     def _generate_mask(self, x, length):
         mask = []
 
