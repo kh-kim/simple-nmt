@@ -89,8 +89,8 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
         return {
             'loss': loss,
             'ppl': ppl,
-            '|param|': p_norm,
-            '|g_param|': g_norm,
+            '|param|': p_norm if not np.isnan(p_norm) and not np.isinf(p_norm) else 0.,
+            '|g_param|': g_norm if not np.isnan(g_norm) and not np.isinf(g_norm) else 0.,
         }
 
     @staticmethod
