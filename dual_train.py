@@ -154,6 +154,62 @@ def define_argparser(is_continue=False):
     return config
 
 
+def get_models(src_vocab_size, tgt_vocab_size, config):
+    language_models = [
+        LanguageModel(
+            tgt_vocab_size,
+            config.word_vec_size,
+            config.hidden_size,
+            n_layers=config.n_layers,
+            dropout_p=config.dropout,
+        ),
+        LanguageModel(
+            src_vocab_size,
+            config.word_vec_size,
+            config.hidden_size,
+            n_layers=config.n_layers,
+            dropout_p=config.dropout,
+        ),
+    ]
+
+    models = [
+        Seq2Seq(
+            src_vocab_size,
+            config.word_vec_size,
+            config.hidden_size,
+            tgt_vocab_size,
+            n_layers=config.n_layers,
+            dropout_p=config.dropout,
+        ),
+        Seq2Seq(
+            tgt_vocab_size,
+            config.word_vec_size,
+            config.hidden_size,
+            src_vocab_size,
+            n_layers=config.n_layers,
+            dropout_p=config.dropout,
+        ),
+    ]
+
+    return language_models, models
+
+
+def get_crits(src_vocab_size, tgt_vocab_size, pad_index):
+    loss_weights = [
+        torch.ones(tgt_vocab_size),
+        torch.ones(src_vocab_size),
+    ]
+    loss_weights[0][pad_index] = .0
+    loss_weights[1][pad_index] = .0
+
+    crits = [
+        nn.NLLLoss(weight=loss_weights[0], reduction='none'),
+        nn.NLLLoss(weight=loss_weights[1], reduction='none'),
+    ]
+
+    return crits
+
+
 def main(config, model_weight=None, opt_weight=None):
     def print_config(config):
         pp = pprint.PrettyPrinter(indent=4)
@@ -170,53 +226,20 @@ def main(config, model_weight=None, opt_weight=None):
         dsl=True,
     )
 
-    language_models = [
-        LanguageModel(
-            len(loader.tgt.vocab),
-            config.word_vec_size,
-            config.hidden_size,
-            n_layers=config.n_layers,
-            dropout_p=config.dropout,
-        ),
-        LanguageModel(
-            len(loader.src.vocab),
-            config.word_vec_size,
-            config.hidden_size,
-            n_layers=config.n_layers,
-            dropout_p=config.dropout,
-        ),
-    ]
+    src_vocab_size = len(loader.src.vocab)
+    tgt_vocab_size = len(loader.tgt.vocab)
 
-    models = [
-        Seq2Seq(
-            len(loader.src.vocab),
-            config.word_vec_size,
-            config.hidden_size,
-            len(loader.tgt.vocab),
-            n_layers=config.n_layers,
-            dropout_p=config.dropout,
-        ),
-        Seq2Seq(
-            len(loader.tgt.vocab),
-            config.word_vec_size,
-            config.hidden_size,
-            len(loader.src.vocab),
-            n_layers=config.n_layers,
-            dropout_p=config.dropout,
-        ),
-    ]
+    language_models, models = get_models(
+        src_vocab_size,
+        tgt_vocab_size,
+        config
+    )
 
-    loss_weights = [
-        torch.ones(len(loader.tgt.vocab)),
-        torch.ones(len(loader.src.vocab)),
-    ]
-    loss_weights[0][data_loader.PAD] = .0
-    loss_weights[1][data_loader.PAD] = .0
-
-    crits = [
-        nn.NLLLoss(weight=loss_weights[0], reduction='none'),
-        nn.NLLLoss(weight=loss_weights[1], reduction='none'),
-    ]
+    crits = get_crits(
+        src_vocab_size,
+        tgt_vocab_size,
+        pad_index=data_loader.PAD
+    )
 
     if model_weight is not None:
         for model, w in zip(models + language_models, model_weight):
@@ -236,8 +259,8 @@ def main(config, model_weight=None, opt_weight=None):
             lm, crit, optimizer,
             train_loader=loader.train_iter,
             valid_loader=loader.valid_iter,
-            src_vocab=loader.src.vocab if lm.vocab_size == len(loader.src.vocab) else None,
-            tgt_vocab=loader.tgt.vocab if lm.vocab_size == len(loader.tgt.vocab) else None,
+            src_vocab=loader.src.vocab if lm.vocab_size == src_vocab_size else None,
+            tgt_vocab=loader.tgt.vocab if lm.vocab_size == tgt_vocab_size else None,
             n_epochs=config.lm_n_epochs,
         )
 
