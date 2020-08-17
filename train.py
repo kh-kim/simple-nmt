@@ -6,6 +6,7 @@ from torch import optim
 import torch.nn as nn
 
 from transformers import get_linear_schedule_with_warmup
+import torch_optimizer as custom_optim
 
 from simple_nmt.data_loader import DataLoader
 import simple_nmt.data_loader as data_loader
@@ -14,12 +15,12 @@ from simple_nmt.models.seq2seq import Seq2Seq
 from simple_nmt.models.transformer import Transformer
 from simple_nmt.models.rnnlm import LanguageModel
 
-from simple_nmt.lm_trainer import LanguageModelTrainer as LMTrainer
-from simple_nmt.dual_trainer import DualSupervisedTrainer as DSLTrainer
 from simple_nmt.trainer import SingleTrainer
-
 from simple_nmt.rl_trainer import MinimumRiskTrainingEngine
 from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
+
+from simple_nmt.lm_trainer import LanguageModelTrainer as LMTrainer
+from simple_nmt.dual_trainer import DualSupervisedTrainer as DSLTrainer
 
 
 def define_argparser(is_continue=False):
@@ -125,6 +126,11 @@ def define_argparser(is_continue=False):
         '--use_adam',
         action='store_true',
         help='Use Adam as optimizer instead of SGD. Other lr arguments should be changed.',
+    )
+    p.add_argument(
+        '--use_radam',
+        action='store_true',
+        help='Use rectified Adam as optimizer. Other lr arguments should be changed.',
     )
     p.add_argument(
         '--lr',
@@ -442,10 +448,14 @@ def main(config, model_weight=None, opt_weight=None):
                 )
             else: # case of rnn based seq2seq.
                 optimizer = optim.Adam(model.parameters(), lr=config.lr)
+        elif config.use_radam:
+            assert not config.use_noam_decay, "You need to turn-off noam decay, when you use RAdam."
+
+            optimizer = custom_optim.RAdam(model.parameters(), lr=config.lr)
         else:
             optimizer = optim.SGD(model.parameters(), lr=config.lr)
 
-        if opt_weight is not None and config.use_adam:
+        if opt_weight is not None and (config.use_adam or config.use_radam):
             optimizer.load_state_dict(opt_weight)
 
         if config.use_noam_decay:
