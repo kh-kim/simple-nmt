@@ -6,6 +6,7 @@ from torch import optim
 import torch.nn as nn
 
 from transformers import get_linear_schedule_with_warmup
+import torch_optimizer as custom_optim
 
 from simple_nmt.data_loader import DataLoader
 import simple_nmt.data_loader as data_loader
@@ -14,10 +15,7 @@ from simple_nmt.models.seq2seq import Seq2Seq
 from simple_nmt.models.transformer import Transformer
 from simple_nmt.models.rnnlm import LanguageModel
 
-from simple_nmt.lm_trainer import LanguageModelTrainer as LMTrainer
-from simple_nmt.dual_trainer import DualSupervisedTrainer as DSLTrainer
 from simple_nmt.trainer import SingleTrainer
-
 from simple_nmt.rl_trainer import MinimumRiskTrainingEngine
 from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
 
@@ -68,7 +66,7 @@ def define_argparser(is_continue=False):
     p.add_argument(
         '--n_epochs',
         type=int,
-        default=15,
+        default=20,
         help='Number of epochs to train. Default=%(default)s'
     )
     p.add_argument(
@@ -87,13 +85,13 @@ def define_argparser(is_continue=False):
     p.add_argument(
         '--max_length',
         type=int,
-        default=80,
+        default=100,
         help='Maximum length of the training sequence. Default=%(default)s'
     )
     p.add_argument(
         '--dropout',
         type=float,
-        default=.2,
+        default=.3,
         help='Dropout rate. Default=%(default)s'
     )
     p.add_argument(
@@ -120,18 +118,20 @@ def define_argparser(is_continue=False):
         default=5.,
         help='Threshold for gradient clipping. Default=%(default)s'
     )
-
     p.add_argument(
-        '--use_adam',
-        action='store_true',
-        help='Use Adam as optimizer instead of SGD. Other lr arguments should be changed.',
+        '--iteration_per_update',
+        type=int,
+        default=1,
+        help='Number of feed-forward iterations for one parameter update. Default=%(default)s'
     )
+
     p.add_argument(
         '--lr',
         type=float,
         default=1.,
         help='Initial learning rate. Default=%(default)s',
     )
+
     p.add_argument(
         '--lr_step',
         type=int,
@@ -150,13 +150,18 @@ def define_argparser(is_continue=False):
         default=10,
         help='Learning rate decay start at. Default=%(default)s',
     )
+
     p.add_argument(
-        '--iteration_per_update',
-        type=int,
-        default=1,
-        help='Number of feed-forward iterations for one parameter update. Default=%(default)s'
+        '--use_radam',
+        action='store_true',
+        help='Use rectified Adam as optimizer. Other lr arguments should be changed.',
     )
 
+    p.add_argument(
+        '--use_adam',
+        action='store_true',
+        help='Use Adam as optimizer instead of SGD. Other lr arguments should be changed.',
+    )
     p.add_argument(
         '--use_noam_decay',
         action='store_true',
@@ -165,7 +170,7 @@ def define_argparser(is_continue=False):
     p.add_argument(
         '--lr_warmup_ratio',
         type=float,
-        default=.1,
+        default=.05,
         help='Ratio of warming up steps from total iterations for Noam learning rate decay. Default=%(default)s',
     )
 
@@ -195,36 +200,6 @@ def define_argparser(is_continue=False):
     )
 
     p.add_argument(
-        '--dsl',
-        action='store_true',
-        help='Training with Dual Supervised Learning method.'
-    )
-    p.add_argument(
-        '--lm_n_epochs',
-        type=int,
-        default=10,
-        help='Number of epochs for language model training. Default=%(default)s'
-    )
-    p.add_argument(
-        '--lm_batch_size',
-        type=int,
-        default=512,
-        help='Batch size for language model training. Default=%(default)s',
-    )
-    p.add_argument(
-        '--dsl_n_epochs',
-        type=int,
-        default=10,
-        help='Number of epochs for Dual Supervised Learning. \'--n_epochs\' - \'--dsl_n_epochs\' will be number of epochs for pretraining (without regularization term).'
-    )
-    p.add_argument(
-        '--dsl_lambda',
-        type=float,
-        default=1e-3,
-        help='Lagrangian Multiplier for regularization term. Default=%(default)s'
-    )
-
-    p.add_argument(
         '--use_transformer',
         action='store_true',
         help='Set model architecture as Transformer.',
@@ -240,271 +215,179 @@ def define_argparser(is_continue=False):
 
     return config
 
+
+def get_model(input_size, output_size, config):
+    if config.use_transformer:
+        model = Transformer(
+            input_size,
+            config.hidden_size,
+            output_size,
+            n_splits=config.n_splits,
+            n_enc_blocks=config.n_layers,
+            n_dec_blocks=config.n_layers,
+            dropout_p=config.dropout,
+        )
+    else:
+        model = Seq2Seq(
+            input_size,
+            config.word_vec_size,  # Word embedding vector size
+            config.hidden_size,  # LSTM's hidden vector size
+            output_size,
+            n_layers=config.n_layers,  # number of layers in LSTM
+            dropout_p=config.dropout  # dropout-rate in LSTM
+        )
+
+    return model
+
+
+def get_crit(output_size, pad_index):
+    # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
+    # Thus, set a weight for PAD to zero.
+    loss_weight = torch.ones(output_size)
+    loss_weight[pad_index] = 0.
+    # Instead of using Cross-Entropy loss,
+    # we can use Negative Log-Likelihood(NLL) loss with log-probability.
+    crit = nn.NLLLoss(
+        weight=loss_weight,
+        reduction='sum'
+    )
+
+    return crit
+
+
+def get_optimizer(model, config):
+    if config.use_adam:
+        if config.use_transformer:
+            no_decay = ['bias', 'LayerNorm.weight']
+            optimizer_grouped_parameters = [
+                {
+                    'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                    'weight_decay': 0.01
+                },
+                {
+                    'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+                    'weight_decay': 0.0
+                }
+            ]
+
+            optimizer = optim.AdamW(
+                optimizer_grouped_parameters,
+                lr=config.lr,
+            )
+        else: # case of rnn based seq2seq.
+            optimizer = optim.Adam(model.parameters(), lr=config.lr)
+    elif config.use_radam:
+        assert not config.use_noam_decay, "You need to turn-off noam decay, when you use RAdam."
+
+        optimizer = custom_optim.RAdam(model.parameters(), lr=config.lr)
+    else:
+        optimizer = optim.SGD(model.parameters(), lr=config.lr)
+
+    return optimizer
+
+
+def get_scheduler(optimizer, n_minibatchs, config):
+    if config.use_noam_decay:
+        assert config.use_adam, "You need to set Adam as your optimizer."
+
+        n_total_iterations = n_minibatchs * config.n_epochs / config.iteration_per_update
+        n_warmup_steps = int(n_total_iterations * config.lr_warmup_ratio)
+        last_epoch = n_minibatchs * (config.init_epoch - 1) / config.iteration_per_update
+
+        lr_scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            n_warmup_steps,
+            n_total_iterations,
+            last_epoch=last_epoch if config.init_epoch > 1 else -1,
+        )
+    else:
+        if config.lr_step > 0:
+            lr_scheduler = optim.lr_scheduler.MultiStepLR(
+                optimizer,
+                milestones=[i for i in range(
+                    max(0, config.lr_decay_start - 1),
+                    (config.init_epoch - 1) + config.n_epochs,
+                    config.lr_step
+                )],
+                gamma=config.lr_gamma,
+                last_epoch=config.init_epoch - 1 if config.init_epoch > 1 else -1,
+            )
+        else:
+            lr_scheduler = None
+
+    return lr_scheduler
+
+
 def main(config, model_weight=None, opt_weight=None):
     def print_config(config):
         pp = pprint.PrettyPrinter(indent=4)
         pp.pprint(vars(config))
     print_config(config)
 
-    if config.dsl:
-        loader = DataLoader(
-            config.train,
-            config.valid,
-            (config.lang[:2], config.lang[-2:]),
-            batch_size=config.lm_batch_size,
-            device=config.gpu_id,
-            max_length=config.max_length,
-            dsl=config.dsl,
-        )
+    loader = DataLoader(
+        config.train,
+        config.valid,
+        (config.lang[:2], config.lang[-2:]),
+        batch_size=config.batch_size,
+        device=-1, #config.gpu_id,
+        max_length=config.max_length,
+        dsl=False,
+    )
 
-        language_models = [
-            LanguageModel(
-                len(loader.tgt.vocab),
-                config.word_vec_size,
-                config.hidden_size,
-                n_layers=config.n_layers,
-                dropout_p=config.dropout,
-            ),
-            LanguageModel(
-                len(loader.src.vocab),
-                config.word_vec_size,
-                config.hidden_size,
-                n_layers=config.n_layers,
-                dropout_p=config.dropout,
-            ),
-        ]
+    input_size, output_size = len(loader.src.vocab), len(loader.tgt.vocab)
+    model = get_model(input_size, output_size, config)
+    crit = get_crit(output_size, data_loader.PAD)
 
-        models = [
-            Seq2Seq(
-                len(loader.src.vocab),
-                config.word_vec_size,
-                config.hidden_size,
-                len(loader.tgt.vocab),
-                n_layers=config.n_layers,
-                dropout_p=config.dropout,
-            ),
-            Seq2Seq(
-                len(loader.tgt.vocab),
-                config.word_vec_size,
-                config.hidden_size,
-                len(loader.src.vocab),
-                n_layers=config.n_layers,
-                dropout_p=config.dropout,
-            ),
-        ]
+    if model_weight is not None:
+        model.load_state_dict(model_weight)
 
-        loss_weights = [
-            torch.ones(len(loader.tgt.vocab)),
-            torch.ones(len(loader.src.vocab)),
-        ]
-        loss_weights[0][data_loader.PAD] = .0
-        loss_weights[1][data_loader.PAD] = .0
+    # Pass models to GPU device if it is necessary.
+    if config.gpu_id >= 0:
+        model.cuda(config.gpu_id)
+        crit.cuda(config.gpu_id)
 
-        crits = [
-            nn.NLLLoss(weight=loss_weights[0], reduction='none'),
-            nn.NLLLoss(weight=loss_weights[1], reduction='none'),
-        ]
+    optimizer = get_optimizer(model, config)
 
-        print(language_models)
-        print(models)
-        print(crits)
+    if opt_weight is not None and (config.use_adam or config.use_radam):
+        optimizer.load_state_dict(opt_weight)
 
-        if model_weight is not None:
-            for model, w in zip(models + language_models, model_weight):
-                model.load_state_dict(w)
+    lr_scheduler = get_scheduler(optimizer, len(loader.train_iter), config)
 
-        if config.gpu_id >= 0:
-            for lm, seq2seq, crit in zip(language_models, models, crits):
-                lm.cuda(config.gpu_id)
-                seq2seq.cuda(config.gpu_id)
-                crit.cuda(config.gpu_id)
-
-        for lm, crit in zip(language_models, crits):
-            optimizer = optim.Adam(lm.parameters())
-            lm_trainer = LMTrainer(config)
-
-            lm_trainer.train(
-                lm, crit, optimizer,
-                train_loader=loader.train_iter,
-                valid_loader=loader.valid_iter,
-                src_vocab=loader.src.vocab if lm.vocab_size == len(loader.src.vocab) else None,
-                tgt_vocab=loader.tgt.vocab if lm.vocab_size == len(loader.tgt.vocab) else None,
-                n_epochs=config.lm_n_epochs,
-            )
-
-        loader = DataLoader(
-            config.train,
-            config.valid,
-            (config.lang[:2], config.lang[-2:]),
-            batch_size=config.batch_size,
-            device=config.gpu_id,
-            max_length=config.max_length,
-            dsl=config.dsl
-        )
-
-        dsl_trainer = DSLTrainer(config)
-
-        optimizers = [
-            optim.Adam(models[0].parameters()),
-            optim.Adam(models[1].parameters()),
-        ]
-
-        if opt_weight is not None:
-            for opt, w in zip(optimizers, opt_weight):
-                opt.load_state_dict(w)
-
-        dsl_trainer.train(
-            models,
-            language_models,
-            crits,
-            optimizers,
-            train_loader=loader.train_iter,
-            valid_loader=loader.valid_iter,
-            vocabs=[loader.src.vocab, loader.tgt.vocab],
-            n_epochs=config.n_epochs + config.dsl_n_epochs,
-            lr_schedulers=None,
-        )
-    else:
-        loader = DataLoader(
-            config.train,
-            config.valid,
-            (config.lang[:2], config.lang[-2:]),
-            batch_size=config.batch_size,
-            device=-1, #config.gpu_id,
-            max_length=config.max_length,
-            dsl=config.dsl
-        )
-
-        # Encoder's embedding layer input size
-        input_size = len(loader.src.vocab)
-        # Decoder's embedding layer input size and Generator's softmax layer output size
-        output_size = len(loader.tgt.vocab)
-        # Declare the model
-        if config.use_transformer:
-            model = Transformer(
-                input_size,
-                config.hidden_size,
-                output_size,
-                n_splits=config.n_splits,
-                n_enc_blocks=config.n_layers,
-                n_dec_blocks=config.n_layers,
-                dropout_p=config.dropout,
-            )
-        else:
-            model = Seq2Seq(
-                input_size,
-                config.word_vec_size,  # Word embedding vector size
-                config.hidden_size,  # LSTM's hidden vector size
-                output_size,
-                n_layers=config.n_layers,  # number of layers in LSTM
-                dropout_p=config.dropout  # dropout-rate in LSTM
-            )
-
-        # Default weight for loss equals to 1, but we don't need to get loss for PAD token.
-        # Thus, set a weight for PAD to zero.
-        loss_weight = torch.ones(output_size)
-        loss_weight[data_loader.PAD] = 0.
-        # Instead of using Cross-Entropy loss,
-        # we can use Negative Log-Likelihood(NLL) loss with log-probability.
-        crit = nn.NLLLoss(
-            weight=loss_weight,
-            reduction='sum'
-        )
-
+    if config.verbose >= 2:
         print(model)
         print(crit)
-
-        if model_weight is not None:
-            model.load_state_dict(model_weight)
-
-        # Pass models to GPU device if it is necessary.
-        if config.gpu_id >= 0:
-            model.cuda(config.gpu_id)
-            crit.cuda(config.gpu_id)
-
-        if config.use_adam:
-            if config.use_transformer:
-                no_decay = ['bias', 'LayerNorm.weight']
-                optimizer_grouped_parameters = [
-                    {
-                        'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-                        'weight_decay': 0.01
-                    },
-                    {
-                        'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-                        'weight_decay': 0.0
-                    }
-                ]
-
-                optimizer = optim.AdamW(
-                    optimizer_grouped_parameters,
-                    lr=config.lr,
-                )
-            else: # case of rnn based seq2seq.
-                optimizer = optim.Adam(model.parameters(), lr=config.lr)
-        else:
-            optimizer = optim.SGD(model.parameters(), lr=config.lr)
-
-        if opt_weight is not None and config.use_adam:
-            optimizer.load_state_dict(opt_weight)
-
-        if config.use_noam_decay:
-            n_total_iterations = len(loader.train_iter) * config.n_epochs / config.iteration_per_update
-            n_warmup_steps = int(n_total_iterations * config.lr_warmup_ratio)
-            lr_scheduler = get_linear_schedule_with_warmup(
-                optimizer,
-                n_warmup_steps,
-                n_total_iterations
-            )
-        else:
-            if config.lr_step > 0:
-                lr_scheduler = optim.lr_scheduler.MultiStepLR(
-                    optimizer,
-                    milestones=[i for i in range(
-                        max(0, config.lr_decay_start - 1),
-                        (config.init_epoch - 1) + config.n_epochs,
-                        config.lr_step
-                    )],
-                    gamma=config.lr_gamma
-                )
-
-                for _ in range(config.init_epoch - 1):
-                    lr_scheduler.step()
-            else:
-                lr_scheduler = None
-
         print(optimizer)
 
-        # Start training. This function maybe equivalant to 'fit' function in Keras.
-        mle_trainer = SingleTrainer(MaximumLikelihoodEstimationEngine, config)
-        mle_trainer.train(
+    # Start training. This function maybe equivalant to 'fit' function in Keras.
+    mle_trainer = SingleTrainer(MaximumLikelihoodEstimationEngine, config)
+    mle_trainer.train(
+        model,
+        crit,
+        optimizer,
+        train_loader=loader.train_iter,
+        valid_loader=loader.valid_iter,
+        src_vocab=loader.src.vocab,
+        tgt_vocab=loader.tgt.vocab,
+        n_epochs=config.n_epochs,
+        lr_scheduler=lr_scheduler,
+    )
+
+    if config.rl_n_epochs > 0:
+        optimizer = optim.SGD(model.parameters(), lr=config.rl_lr)
+        #optimizer = optim.Adam(model.parameters(), lr=config.rl_lr)
+
+        mrt_trainer = SingleTrainer(MinimumRiskTrainingEngine, config)
+
+        mrt_trainer.train(
             model,
-            crit,
+            None, # We don't need criterion for MRT.
             optimizer,
             train_loader=loader.train_iter,
             valid_loader=loader.valid_iter,
             src_vocab=loader.src.vocab,
             tgt_vocab=loader.tgt.vocab,
-            n_epochs=config.n_epochs,
-            lr_scheduler=lr_scheduler,
+            n_epochs=config.rl_n_epochs,
         )
-
-        if config.rl_n_epochs > 0:
-            optimizer = optim.SGD(model.parameters(), lr=config.rl_lr)
-            #optimizer = optim.Adam(model.parameters(), lr=config.rl_lr)
-
-            mrt_trainer = SingleTrainer(MinimumRiskTrainingEngine, config)
-
-            mrt_trainer.train(
-                model,
-                None, # We don't need criterion for MRT.
-                optimizer,
-                train_loader=loader.train_iter,
-                valid_loader=loader.valid_iter,
-                src_vocab=loader.src.vocab,
-                tgt_vocab=loader.tgt.vocab,
-                n_epochs=config.rl_n_epochs,
-            )
 
 
 if __name__ == '__main__':

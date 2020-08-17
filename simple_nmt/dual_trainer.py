@@ -1,8 +1,10 @@
 import numpy as np
-import torch
 
+import torch
 from torch import optim
 import torch.nn.utils as torch_utils
+from torch.cuda.amp import autocast
+from torch.cuda.amp import GradScaler
 
 from ignite.engine import Engine
 from ignite.engine import Events
@@ -41,6 +43,10 @@ class DualSupervisedTrainingEngine(Engine):
 
         self.best_x2y = np.inf
         self.best_y2x = np.inf
+        self.scalers = [
+            GradScaler(),
+            GradScaler(),
+        ]
 
     @staticmethod
     def _reordering(x, y, l):
@@ -116,7 +122,7 @@ class DualSupervisedTrainingEngine(Engine):
         return (
             loss_x2y.sum(),
             loss_y2x.sum(),
-            dual_loss.sum() if dual_loss is not None else .0,
+            float(dual_loss.sum()) if dual_loss is not None else .0,
         )
 
     @staticmethod
@@ -126,72 +132,89 @@ class DualSupervisedTrainingEngine(Engine):
                                                     engine.optimizers):
             language_model.eval()
             model.train()
-            optimizer.zero_grad()
+            if engine.state.iteration % engine.config.iteration_per_update == 1:
+                optimizer.zero_grad()
 
-        device = next(engine.model.parameters()).device
+        device = next(engine.models[0].parameters()).device
         mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
         mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1])
         
-        # X2Y
-        x, y = (mini_batch.src[0][:, 1:-1], mini_batch.src[1] - 2), mini_batch.tgt[0][:, :-1]
-        # |x| = (batch_size, n)
-        # |y| = (batch_size, m)
-        y_hat = engine.models[X2Y](x, y)
-        # |y_hat| = (batch_size, m, y_vocab_size)
-        with torch.no_grad():
-            p_hat_y = engine.language_models[X2Y](y)
-            # |p_hat_y| = |y_hat|
+        with autocast():
+            # X2Y
+            x, y = (mini_batch.src[0][:, 1:-1], mini_batch.src[1] - 2), mini_batch.tgt[0][:, :-1]
+            # |x| = (batch_size, n)
+            # |y| = (batch_size, m)
+            y_hat = engine.models[X2Y](x, y)
+            # |y_hat| = (batch_size, m, y_vocab_size)
+            with torch.no_grad():
+                p_hat_y = engine.language_models[X2Y](y)
+                # |p_hat_y| = |y_hat|
 
-        #Y2X
-        # Since encoder in seq2seq takes packed_sequence instance,
-        # we need to re-sort if we use reversed src and tgt.
-        x, y, restore_indice = DualSupervisedTrainingEngine._reordering(
-            mini_batch.src[0][:, :-1],
-            mini_batch.tgt[0][:, 1:-1],
-            mini_batch.tgt[1] - 2,
-        )
-        # |x| = (batch_size, n)
-        # |y| = (batch_size, m)
-        x_hat = engine.models[Y2X](y, x).index_select(dim=0, index=restore_indice)
-        # |x_hat| = (batch_size, n, x_vocab_size)
+            #Y2X
+            # Since encoder in seq2seq takes packed_sequence instance,
+            # we need to re-sort if we use reversed src and tgt.
+            x, y, restore_indice = DualSupervisedTrainingEngine._reordering(
+                mini_batch.src[0][:, :-1],
+                mini_batch.tgt[0][:, 1:-1],
+                mini_batch.tgt[1] - 2,
+            )
+            # |x| = (batch_size, n)
+            # |y| = (batch_size, m)
+            x_hat = engine.models[Y2X](y, x).index_select(dim=0, index=restore_indice)
+            # |x_hat| = (batch_size, n, x_vocab_size)
 
-        with torch.no_grad():
-            p_hat_x = engine.language_models[Y2X](x).index_select(dim=0, index=restore_indice)
-            # |p_hat_x| = |x_hat|
+            with torch.no_grad():
+                p_hat_x = engine.language_models[Y2X](x).index_select(dim=0, index=restore_indice)
+                # |p_hat_x| = |x_hat|
 
-        x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
-        loss_x2y, loss_y2x, dual_loss = DualSupervisedTrainingEngine._get_loss(
-            x, y,
-            x_hat, y_hat,
-            engine.crits,
-            p_hat_x, p_hat_y,
-            # According to the paper, DSL should be warm-started.
-            # Thus, we turn-off the regularization at the beginning.
-            lagrange=engine.config.dsl_lambda if engine.state.epoch >= engine.config.n_epochs else .0
-        )
+            x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
+            loss_x2y, loss_y2x, dual_loss = DualSupervisedTrainingEngine._get_loss(
+                x, y,
+                x_hat, y_hat,
+                engine.crits,
+                p_hat_x, p_hat_y,
+                # According to the paper, DSL should be warm-started.
+                # Thus, we turn-off the regularization at the beginning.
+                lagrange=engine.config.dsl_lambda if engine.state.epoch > engine.config.dsl_n_warmup_epochs else .0
+            )
 
-        loss_x2y.div(y.size(0)).backward()
-        loss_y2x.div(x.size(0)).backward()
+            backward_targets = [
+                loss_x2y.div(y.size(0)).div(engine.config.iteration_per_update),
+                loss_y2x.div(x.size(0)).div(engine.config.iteration_per_update),
+            ]
+
+        for scaler, backward_target in zip(engine.scalers, backward_targets):
+            if engine.config.gpu_id >= 0:
+                scaler.scale(backward_target).backward()
+            else:
+                backward_target.backward()
 
         p_norm = float(get_parameter_norm(list(engine.models[X2Y].parameters()) + 
                                           list(engine.models[Y2X].parameters())))
         g_norm = float(get_grad_norm(list(engine.models[X2Y].parameters()) +
                                      list(engine.models[Y2X].parameters())))
 
-        for model, optimizer in zip(engine.models, engine.optimizers):
+        for model, optimizer, scaler in zip(engine.models,
+                                            engine.optimizers,
+                                            engine.scalers):
             torch_utils.clip_grad_norm_(
                 model.parameters(),
                 engine.config.max_grad_norm,
             )
             # Take a step of gradient descent.
-            optimizer.step()
+            if engine.config.gpu_id >= 0:
+                # Use scaler instead of engine.optimizer.step()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                optimizer.step()
 
         return {
             'x2y': float(loss_x2y / mini_batch.src[1].sum()),
             'y2x': float(loss_y2x / mini_batch.tgt[1].sum()),
             'reg': float(dual_loss / x.size(0)),
-            '|param|': p_norm,
-            '|g_param|': g_norm,
+            '|param|': p_norm if not np.isnan(p_norm) and not np.isinf(p_norm) else 0.,
+            '|g_param|': g_norm if not np.isnan(g_norm) and not np.isinf(g_norm) else 0.,
         }
 
     @staticmethod
@@ -200,35 +223,38 @@ class DualSupervisedTrainingEngine(Engine):
             model.eval()
 
         with torch.no_grad():
-            device = next(engine.model.parameters()).device
+            device = next(engine.models[0].parameters()).device
             mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
             mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1])
 
-            # X2Y
-            x, y = (mini_batch.src[0][:, 1:-1], mini_batch.src[1] - 2), mini_batch.tgt[0][:, :-1]
-            # |x| = (batch_size, n)
-            # |y| = (batch_size  m)
-            y_hat = engine.models[X2Y](x, y)
-            # |y_hat| = (batch_size, m, y_vocab_size)
+            with autocast():
+                # X2Y
+                x, y = (mini_batch.src[0][:, 1:-1], mini_batch.src[1] - 2), mini_batch.tgt[0][:, :-1]
+                # |x| = (batch_size, n)
+                # |y| = (batch_size  m)
+                y_hat = engine.models[X2Y](x, y)
+                # |y_hat| = (batch_size, m, y_vocab_size)
 
-            # Y2X
-            x, y, restore_indice = DualSupervisedTrainingEngine._reordering(
-                mini_batch.src[0][:, :-1],
-                mini_batch.tgt[0][:, 1:-1],
-                mini_batch.tgt[1] - 2,
-            )
-            x_hat = engine.models[Y2X](y, x).index_select(dim=0, index=restore_indice)
-            # |x_hat| = (batch_size, n, x_vocab_size)
+                # Y2X
+                x, y, restore_indice = DualSupervisedTrainingEngine._reordering(
+                    mini_batch.src[0][:, :-1],
+                    mini_batch.tgt[0][:, 1:-1],
+                    mini_batch.tgt[1] - 2,
+                )
+                x_hat = engine.models[Y2X](y, x).index_select(dim=0, index=restore_indice)
+                # |x_hat| = (batch_size, n, x_vocab_size)
 
-            x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
-            loss_x2y = engine.crits[X2Y](
-                y_hat.contiguous().view(-1, y_hat.size(-1)),
-                y.contiguous().view(-1)
-            ).sum()
-            loss_y2x = engine.crits[Y2X](
-                x_hat.contiguous().view(-1, x_hat.size(-1)),
-                x.contiguous().view(-1)
-            ).sum()
+                # You don't have to use _get_loss method, 
+                # because we don't have to care about the gradients.
+                x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
+                loss_x2y = engine.crits[X2Y](
+                    y_hat.contiguous().view(-1, y_hat.size(-1)),
+                    y.contiguous().view(-1)
+                ).sum()
+                loss_y2x = engine.crits[Y2X](
+                    x_hat.contiguous().view(-1, x_hat.size(-1)),
+                    x.contiguous().view(-1)
+                ).sum()
 
         return {
             'x2y': float(loss_x2y / mini_batch.src[1].sum()),

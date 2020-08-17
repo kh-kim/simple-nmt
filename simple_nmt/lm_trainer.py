@@ -1,8 +1,13 @@
+from copy import deepcopy
+
 import numpy as np
 import torch
 
 from torch import optim
 import torch.nn.utils as torch_utils
+from torch.cuda.amp import autocast
+from torch.cuda.amp import GradScaler
+
 from ignite.engine import Engine, Events
 
 VERBOSE_SILENT = 0
@@ -10,6 +15,7 @@ VERBOSE_EPOCH_WISE = 1
 VERBOSE_BATCH_WISE = 2
 
 from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
+from simple_nmt.utils import get_grad_norm, get_parameter_norm
 
 
 class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
@@ -29,11 +35,10 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
         super().__init__(func, model, crit, optimizer, lr_scheduler, config)
 
         self.best_model = None
+        self.scaler = GradScaler()
 
     @staticmethod
     def train(engine, mini_batch):
-        from utils import get_grad_norm, get_parameter_norm
-
         # You have to reset the gradients of all model parameters
         # before to take another step in gradient descent.
         engine.model.train()        
@@ -46,15 +51,22 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
         y = mini_batch.src[0][:, 1:] if engine.is_src_target else mini_batch.tgt[0][:, 1:]
         # |x| = |y| = (batch_size, length)
 
-        y_hat = engine.model(x)
-        # |y_hat| = (batch_size, length, output_size)
+        with autocast():
+            y_hat = engine.model(x)
+            # |y_hat| = (batch_size, length, output_size)
 
-        loss = engine.crit(y_hat.contiguous().view(-1, y_hat.size(-1)),
-                           y.contiguous().view(-1),
-                           ).sum()
-        loss.div(y.size(0)).backward()
+            loss = engine.crit(
+                y_hat.contiguous().view(-1, y_hat.size(-1)),
+                y.contiguous().view(-1),
+            ).sum()
+            backward_target = loss.div(y.size(0))
+
+        if engine.config.gpu_id >= 0:
+            engine.scaler.scale(backward_target).backward()
+        else:
+            backward_target.backward()
+
         word_count = int(mini_batch.src[1].sum()) if engine.is_src_target else int(mini_batch.tgt[1].sum())
-
         p_norm = float(get_parameter_norm(engine.model.parameters()))
         g_norm = float(get_grad_norm(engine.model.parameters()))
 
@@ -64,12 +76,21 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
             engine.config.max_grad_norm,
         )
         # Take a step of gradient descent.
-        engine.optimizer.step()
+        if engine.config.gpu_id >= 0:
+            # Use scaler instead of engine.optimizer.step() if using GPU.
+            engine.scaler.step(engine.optimizer)
+            engine.scaler.update()
+        else:
+            engine.optimizer.step()
+
+        loss = float(loss / word_count)
+        ppl = np.exp(loss)
 
         return {
-            'loss': float(loss / word_count),
-            '|param|': p_norm,
-            '|g_param|': g_norm,
+            'loss': loss,
+            'ppl': ppl,
+            '|param|': p_norm if not np.isnan(p_norm) and not np.isinf(p_norm) else 0.,
+            '|g_param|': g_norm if not np.isnan(g_norm) and not np.isinf(g_norm) else 0.,
         }
 
     @staticmethod
@@ -89,14 +110,16 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
                                ).sum()
             word_count = int(mini_batch.src[1].sum()) if engine.is_src_target else int(mini_batch.tgt[1].sum())
 
+        loss = float(loss / word_count)
+        ppl = np.exp(loss)
+        
         return {
-            'loss': float(loss / word_count),
+            'loss': loss,
+            'ppl': ppl,
         }
 
     @staticmethod
     def check_best(engine):
-        from copy import deepcopy
-
         loss = float(engine.state.metrics['loss'])
         if loss <= engine.best_loss:
             engine.best_loss = loss
