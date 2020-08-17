@@ -246,7 +246,7 @@ def define_argparser(is_continue=False):
 
     return config
 
-def main(config, model_weight=None, opt_weight=None):
+def main(config, model_weight=None, opt_weight=None, scheduler_weight=None):
     def print_config(config):
         pp = pprint.PrettyPrinter(indent=4)
         pp.pprint(vars(config))
@@ -459,6 +459,8 @@ def main(config, model_weight=None, opt_weight=None):
             optimizer.load_state_dict(opt_weight)
 
         if config.use_noam_decay:
+            assert config.use_adam, "You need to set Adam as your optimizer."
+
             n_total_iterations = len(loader.train_iter) * config.n_epochs / config.iteration_per_update
             n_warmup_steps = int(n_total_iterations * config.lr_warmup_ratio)
             lr_scheduler = get_linear_schedule_with_warmup(
@@ -466,6 +468,9 @@ def main(config, model_weight=None, opt_weight=None):
                 n_warmup_steps,
                 n_total_iterations
             )
+
+            if scheduler_weight is not None:
+                lr_scheduler = scheduler_weight
         else:
             if config.lr_step > 0:
                 lr_scheduler = optim.lr_scheduler.MultiStepLR(

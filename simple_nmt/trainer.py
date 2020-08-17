@@ -223,6 +223,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
             {
                 'model': engine.model.state_dict(),
                 'opt': train_engine.optimizer.state_dict(),
+                'scheduler': train_engine.lr_scheduler.state_dict(),
                 'config': config,
                 'src_vocab': src_vocab,
                 'tgt_vocab': tgt_vocab,

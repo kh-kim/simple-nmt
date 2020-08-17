@@ -33,12 +33,10 @@ if __name__ == '__main__':
         config = overwrite_config(config, prev_config)
 
         model_weight = saved_data['model']
-        if 'lr' in vars(prev_config).keys():
-            opt_weight = None
-        else:
-            opt_weight = saved_data['opt']
+        opt_weight = saved_data['opt']        
+        scheduler_weight = None #saved_data['scheduler']
 
         from train import main
-        main(config, model_weight=model_weight, opt_weight=opt_weight)
+        main(config, model_weight=model_weight, opt_weight=opt_weight, scheduler_weight=scheduler_weight)
     else:
         print('Cannot find file %s' % config.load_fn)
