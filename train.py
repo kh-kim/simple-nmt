@@ -66,7 +66,7 @@ def define_argparser(is_continue=False):
     p.add_argument(
         '--n_epochs',
         type=int,
-        default=15,
+        default=20,
         help='Number of epochs to train. Default=%(default)s'
     )
     p.add_argument(
@@ -85,13 +85,13 @@ def define_argparser(is_continue=False):
     p.add_argument(
         '--max_length',
         type=int,
-        default=80,
+        default=100,
         help='Maximum length of the training sequence. Default=%(default)s'
     )
     p.add_argument(
         '--dropout',
         type=float,
-        default=.2,
+        default=.3,
         help='Dropout rate. Default=%(default)s'
     )
     p.add_argument(
