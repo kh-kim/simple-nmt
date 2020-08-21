@@ -293,7 +293,7 @@ class DualSupervisedTrainingEngine(Engine):
                 avg_y2x = engine.state.metrics['y2x']
                 avg_reg = engine.state.metrics['reg']
 
-                print('Epoch {} - |param|={:.2e} |g_param|={:.2e} loss_x2y={:.4e} ppl_x2y={:.2f} loss_x2y={:.4e} ppl_x2y={:.2f} dual_loss={:.4e}'.format(
+                print('Epoch {} - |param|={:.2e} |g_param|={:.2e} loss_x2y={:.4e} ppl_x2y={:.2f} loss_y2x={:.4e} ppl_y2x={:.2f} dual_loss={:.4e}'.format(
                     engine.state.epoch,
                     avg_p_norm,
                     avg_g_norm,
