@@ -47,8 +47,9 @@ class MultiHead(nn.Module):
         self.attn = Attention()
 
     def forward(self, Q, K, V, mask=None):
-        # |Q| = (batch_size, m, hidden_size)
-        # |K| = |V| = (batch_size, n, hidden_size)
+        # |Q|    = (batch_size, m, hidden_size)
+        # |K|    = (batch_size, n, hidden_size)
+        # |V|    = |K|
         # |mask| = (batch_size, m, n)
 
         QWs = self.Q_linear(Q).split(self.hidden_size // self.n_splits, dim=-1)
@@ -110,7 +111,7 @@ class EncoderBlock(nn.Module):
         self.fc_dropout = nn.Dropout(dropout_p)
 
     def forward(self, x, mask):
-        # |x| = (batch_size, n, hidden_size)
+        # |x|    = (batch_size, n, hidden_size)
         # |mask| = (batch_size, n, n)
 
         z = self.attn_norm(x + self.attn_dropout(self.attn(Q=x,
@@ -150,35 +151,29 @@ class DecoderBlock(nn.Module):
         self.fc_norm = nn.LayerNorm(hidden_size)
         self.fc_dropout = nn.Dropout(dropout_p)
 
-    def forward(self, x, key_and_value, mask, prev):
-        # In case of inference, we don't have to repeat same feed-forward operations.
-        # Thus, we save previous feed-forward results, including intermediate results.
-        if prev is not None:
-            # |x| = (batch_size, m=1, hidden_size)
-            # |prev| = (batch_size, m', hidden_size)
+    def forward(self, x, key_and_value, mask, prev, future_mask):
+        # |key_and_value| = (batch_size, n, hidden_size)
+        # |mask|          = (batch_size, m, n)
 
+        # In case of inference, we don't have to repeat same feed-forward operations.
+        # Thus, we save previous feed-forward results.
+        if prev is None: # Training mode
+            # |x|           = (batch_size, m, hidden_size)
+            # |prev|        = None
+            # |future_mask| = (batch_size, m, m)
+            # |z|           = (batch_size, m, hidden_size)
+            z = self.masked_attn_norm(x + self.masked_attn_dropout(
+                self.masked_attn(x, x, x, mask=future_mask)
+            ))
+        else: # Inference mode
+            # |x|           = (batch_size, 1, hidden_size)
+            # |prev|        = (batch_size, t - 1, hidden_size)
+            # |future_mask| = None
+            # |z|           = (batch_size, 1, hidden_size)
             z = self.masked_attn_norm(x + self.masked_attn_dropout(
                 self.masked_attn(x, prev, prev, mask=None)
             ))
-            # |z| = (batch_size, 1, hidden_size)
-        else:
-            # |x| = (batch_size, m, hidden_size)
-            batch_size = x.size(0)
-            m = x.size(1)
 
-            with torch.no_grad():
-                fwd_mask = torch.triu(x.new_ones((m, m)), diagonal=1).bool()
-                # |fwd_mask| = (m, m)
-                fwd_mask = fwd_mask.unsqueeze(0).expand(batch_size, *fwd_mask.size())
-                # |fwd_mask| = (batch_size, m, m)
-
-            z = self.masked_attn_norm(x + self.masked_attn_dropout(
-                self.masked_attn(x, x, x, mask=fwd_mask)
-            ))
-            # |z| = (batch_size, m, hidden_size)
-
-        # |key_and_value| = (batch_size, n, hidden_size)
-        # |mask| = (batch_size, m, n)
         z = self.attn_norm(z + self.attn_dropout(self.attn(Q=z,
                                                            K=key_and_value,
                                                            V=key_and_value,
@@ -188,7 +183,7 @@ class DecoderBlock(nn.Module):
         z = self.fc_norm(z + self.fc_dropout(self.fc(z)))
         # |z| = (batch_size, m, hidden_size)
 
-        return z, key_and_value, mask, prev
+        return z, key_and_value, mask, prev, future_mask
 
 
 class MySequential(nn.Sequential):
@@ -305,23 +300,31 @@ class Transformer(nn.Module):
 
     def forward(self, x, y):
         # |x[0]| = (batch_size, n)
-        # |y| = (batch_size, m)
+        # |y|    = (batch_size, m)
 
-        mask = self._generate_mask(x[0], x[1])
-        # |mask| = (batch_size, n)
-        x = x[0]
+        with torch.no_grad():
+            mask = self._generate_mask(x[0], x[1])
+            # |mask| = (batch_size, n)
+            x = x[0]
 
-        mask_enc = mask.unsqueeze(1).expand(mask.size(0), x.size(1), mask.size(-1))
-        mask_dec = mask.unsqueeze(1).expand(mask.size(0), y.size(1), mask.size(-1))
-        # |mask_enc| = (batch_size, n, n)
-        # |mask_dec| = (batch_size, m, n)
+            # Mask to prevent having attention weight on padding position.
+            mask_enc = mask.unsqueeze(1).expand(*x.size(), mask.size(-1))
+            mask_dec = mask.unsqueeze(1).expand(*y.size(), mask.size(-1))
+            # |mask_enc| = (batch_size, n, n)
+            # |mask_dec| = (batch_size, m, n)
 
         z = self.emb_dropout(self._position_encoding(self.emb_enc(x)))
         z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
+        with torch.no_grad():
+            future_mask = torch.triu(x.new_ones((y.size(1), y.size(1))), diagonal=1).bool()
+            # |future_mask| = (m, m)
+            future_mask = future_mask.unsqueeze(0).expand(y.size(0), *future_mask.size())
+            # |fwd_mask| = (batch_size, m, m)
+
         h = self.emb_dropout(self._position_encoding(self.emb_dec(y)))
-        h, _, _, _ = self.decoder(h, z, mask_dec, None)
+        h, _, _, _, _ = self.decoder(h, z, mask_dec, None, future_mask)
         # |h| = (batch_size, m, hidden_size)
 
         y_hat = self.softmax(self.generator(h))
@@ -371,7 +374,7 @@ class Transformer(nn.Module):
                 prev = prevs[layer_index]
                 # |prev| = (batch_size, m, hidden_size)
 
-                h_t, _, _, _ = block(h_t, z, mask_dec, prev)
+                h_t, _, _, _, _ = block(h_t, z, mask_dec, prev, None)
                 # |h_t| = (batch_size, 1, hidden_size)
 
                 if prevs[layer_index + 1] is None:
@@ -505,7 +508,7 @@ class Transformer(nn.Module):
                 prev = fab_prevs[layer_index]
                 # |prev| = (current_batch_size, m, hidden_size)
 
-                h_t, _, _, _ = block(h_t, fab_z, fab_mask, prev)
+                h_t, _, _, _, _ = block(h_t, fab_z, fab_mask, prev, None)
                 # |h_t| = (current_batch_size, 1, hidden_size)
 
                 if fab_prevs[layer_index + 1] is None:
