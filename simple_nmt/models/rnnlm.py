@@ -9,14 +9,14 @@ class LanguageModel(nn.Module):
     def __init__(
         self,
         vocab_size,
-        word_vec_dim=256,
+        word_vec_size=256,
         hidden_size=512,
         n_layers=4,
         dropout_p=.3,
         max_length=255
     ):
         self.vocab_size = vocab_size
-        self.word_vec_dim = word_vec_dim
+        self.word_vec_size = word_vec_size
         self.hidden_size = hidden_size
         self.n_layers = n_layers
         self.dropout_p = dropout_p
@@ -26,11 +26,11 @@ class LanguageModel(nn.Module):
 
         self.emb = nn.Embedding(
             vocab_size,
-            word_vec_dim,
+            word_vec_size,
             padding_idx=data_loader.PAD,
         )
         self.rnn = nn.LSTM(
-            word_vec_dim,
+            word_vec_size,
             hidden_size,
             n_layers,
             batch_first=True,
@@ -42,7 +42,7 @@ class LanguageModel(nn.Module):
     def forward(self, x, *args):
         # |x| = (batch_size, length)
         x = self.emb(x) 
-        # |x| = (batch_size, length, word_vec_dim)
+        # |x| = (batch_size, length, word_vec_size)
         x, _ = self.rnn(x) 
         # |x| = (batch_size, length, hidden_size)
         x = self.out(x) 
@@ -60,7 +60,7 @@ class LanguageModel(nn.Module):
         h, c = None, None
         while is_undone.sum() > 0 and len(indice) < max_length:
             x = self.emb(x)
-            # |emb_t| = (batch_size, 1, word_vec_dim)
+            # |emb_t| = (batch_size, 1, word_vec_size)
 
             x, (h, c) = self.rnn(x, (h, c)) if h is not None and c is not None else self.rnn(x)
             # |x| = (batch_size, 1, hidden_size)
