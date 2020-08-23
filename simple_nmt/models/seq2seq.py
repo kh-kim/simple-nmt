@@ -20,21 +20,21 @@ class Attention(nn.Module):
         # |h_t_tgt| = (batch_size, 1, hidden_size)
         # |mask| = (batch_size, length)
 
-        query = self.linear(h_t_tgt.squeeze(1)).unsqueeze(-1)
-        # |query| = (batch_size, hidden_size, 1)
+        query = self.linear(h_t_tgt)
+        # |query| = (batch_size, 1, hidden_size)
 
-        weight = torch.bmm(h_src, query).squeeze(-1)
-        # |weight| = (batch_size, length)
+        weight = torch.bmm(query, h_src.transpose(1, 2))
+        # |weight| = (batch_size, 1, length)
         if mask is not None:
             # Set each weight as -inf, if the mask value equals to 1.
             # Since the softmax operation makes -inf to 0,
             # masked weights would be set to 0 after softmax operation.
             # Thus, if the sample is shorter than other samples in mini-batch,
             # the weight for empty time-step would be set to 0.
-            weight.masked_fill_(mask, -float('inf'))
+            weight.masked_fill_(mask.unsqueeze(1), -float('inf'))
         weight = self.softmax(weight)
 
-        context_vector = torch.bmm(weight.unsqueeze(1), h_src)
+        context_vector = torch.bmm(weight, h_src)
         # |context_vector| = (batch_size, 1, hidden_size)
 
         return context_vector
