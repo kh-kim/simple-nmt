@@ -302,12 +302,12 @@ class Transformer(nn.Module):
         # |x[0]| = (batch_size, n)
         # |y|    = (batch_size, m)
 
+        # Mask to prevent having attention weight on padding position.
         with torch.no_grad():
             mask = self._generate_mask(x[0], x[1])
             # |mask| = (batch_size, n)
             x = x[0]
 
-            # Mask to prevent having attention weight on padding position.
             mask_enc = mask.unsqueeze(1).expand(*x.size(), mask.size(-1))
             mask_dec = mask.unsqueeze(1).expand(*y.size(), mask.size(-1))
             # |mask_enc| = (batch_size, n, n)
@@ -317,6 +317,7 @@ class Transformer(nn.Module):
         z, _ = self.encoder(z, mask_enc)
         # |z| = (batch_size, n, hidden_size)
 
+        # Generate future mask
         with torch.no_grad():
             future_mask = torch.triu(x.new_ones((y.size(1), y.size(1))), diagonal=1).bool()
             # |future_mask| = (m, m)
@@ -372,7 +373,7 @@ class Transformer(nn.Module):
 
             for layer_index, block in enumerate(self.decoder._modules.values()):
                 prev = prevs[layer_index]
-                # |prev| = (batch_size, m, hidden_size)
+                # |prev| = (batch_size, len(y_hats), hidden_size)
 
                 h_t, _, _, _, _ = block(h_t, z, mask_dec, prev, None)
                 # |h_t| = (batch_size, 1, hidden_size)
@@ -381,23 +382,25 @@ class Transformer(nn.Module):
                     prevs[layer_index + 1] = h_t
                 else:
                     prevs[layer_index + 1] = torch.cat([prevs[layer_index + 1], h_t], dim=1)
+                # |prev| = (batch_size, len(y_hats) + 1, hidden_size)
 
             y_hat_t = self.softmax(self.generator(h_t))
             # |y_hat_t| = (batch_size, 1, output_size)
 
             y_hats += [y_hat_t]
-            if is_greedy:
+            if is_greedy: # Argmax
                 y_t_1 = torch.topk(y_hat_t, 1, dim=-1)[1].squeeze(-1)
-            else:
-                # Take a random sampling based on the multinoulli distribution.
+            else: # Random sampling                
                 y_t_1 = torch.multinomial(y_hat_t.exp().view(x.size(0), -1), 1)
             # Put PAD if the sample is done.
             y_t_1 = y_t_1.masked_fill_(
                 ~is_decoding,
                 data_loader.PAD,
             )
+
+            # Update is_decoding flag.
             is_decoding = is_decoding * torch.ne(y_t_1, data_loader.EOS)
-            # |y| = (batch_size, 1)
+            # |y_t_1| = (batch_size, 1)
             # |is_decoding| = (batch_size, 1)
             indice += [y_t_1]
 
@@ -449,7 +452,13 @@ class Transformer(nn.Module):
         #         'init_status': None,
         #         'batch_dim_index': 0,
         #     },
+        #
         #     ...
+        #
+        #     'prev_state_${n_layers}': {
+        #         'init_status': None,
+        #         'batch_dim_index': 0,
+        #     }
         # }
 
         boards = [
@@ -458,7 +467,7 @@ class Transformer(nn.Module):
                 prev_status_config,
                 beam_size=beam_size,
                 max_length=max_length,
-            ) for i in range(batch_size)
+            ) for _ in range(batch_size)
         ]
         done_cnt = [board.is_done() for board in boards]
 
@@ -488,10 +497,11 @@ class Transformer(nn.Module):
             for i, fab_prev in enumerate(fab_prevs): # i == layer_index
                 if fab_prev is not None:
                     fab_prevs[i] = torch.cat(fab_prev, dim=0)
-            # |fab_input| = (current_batch_size, 1,)
-            # |fab_z|     = (current_batch_size, n, hidden_size)
-            # |fab_mask|  = (current_batch_size, 1, n)
-            # |fab_prevs[i] * n_layers| = (current_batch_size, length, hidden_size) * n_layers
+            # |fab_input|    = (current_batch_size, 1,)
+            # |fab_z|        = (current_batch_size, n, hidden_size)
+            # |fab_mask|     = (current_batch_size, 1, n)
+            # |fab_prevs[i]| = (current_batch_size, length, hidden_size)
+            # len(fab_prevs) = n_dec_layers + 1
 
             # Unlike training procedure,
             # take the last time-step's output during the inference.
