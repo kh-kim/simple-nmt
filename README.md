@@ -32,15 +32,13 @@ usage: train.py [-h] --model_fn MODEL_FN --train TRAIN --valid VALID --lang
                 [--init_epoch INIT_EPOCH] [--max_length MAX_LENGTH]
                 [--dropout DROPOUT] [--word_vec_size WORD_VEC_SIZE]
                 [--hidden_size HIDDEN_SIZE] [--n_layers N_LAYERS]
-                [--max_grad_norm MAX_GRAD_NORM] [--use_adam] [--lr LR]
+                [--max_grad_norm MAX_GRAD_NORM]
+                [--iteration_per_update ITERATION_PER_UPDATE] [--lr LR]
                 [--lr_step LR_STEP] [--lr_gamma LR_GAMMA]
-                [--lr_decay_start LR_DECAY_START]
-                [--iteration_per_update ITERATION_PER_UPDATE]
+                [--lr_decay_start LR_DECAY_START] [--use_radam] [--use_adam]
                 [--use_noam_decay] [--lr_warmup_ratio LR_WARMUP_RATIO]
                 [--rl_lr RL_LR] [--rl_n_samples RL_N_SAMPLES]
-                [--rl_n_epochs RL_N_EPOCHS] [--rl_n_gram RL_N_GRAM] [--dsl]
-                [--lm_n_epochs LM_N_EPOCHS] [--lm_batch_size LM_BATCH_SIZE]
-                [--dsl_n_epochs DSL_N_EPOCHS] [--dsl_lambda DSL_LAMBDA]
+                [--rl_n_epochs RL_N_EPOCHS] [--rl_n_gram RL_N_GRAM]
                 [--use_transformer] [--n_splits N_SPLITS]
 
 optional arguments:
@@ -57,15 +55,15 @@ optional arguments:
                         supported. -1 for CPU. Default=-1
   --batch_size BATCH_SIZE
                         Mini batch size for gradient descent. Default=32
-  --n_epochs N_EPOCHS   Number of epochs to train. Default=15
+  --n_epochs N_EPOCHS   Number of epochs to train. Default=20
   --verbose VERBOSE     VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE
                         = 0, 1, 2. Default=2
   --init_epoch INIT_EPOCH
                         Set initial epoch number, which can be useful in
                         continue training. Default=1
   --max_length MAX_LENGTH
-                        Maximum length of the training sequence. Default=80
-  --dropout DROPOUT     Dropout rate. Default=0.2
+                        Maximum length of the training sequence. Default=100
+  --dropout DROPOUT     Dropout rate. Default=0.3
   --word_vec_size WORD_VEC_SIZE
                         Word embedding vector dimension. Default=512
   --hidden_size HIDDEN_SIZE
@@ -73,22 +71,24 @@ optional arguments:
   --n_layers N_LAYERS   Number of layers in LSTM. Default=4
   --max_grad_norm MAX_GRAD_NORM
                         Threshold for gradient clipping. Default=5.0
-  --use_adam            Use Adam as optimizer instead of SGD. Other lr
-                        arguments should be changed.
+  --iteration_per_update ITERATION_PER_UPDATE
+                        Number of feed-forward iterations for one parameter
+                        update. Default=1
   --lr LR               Initial learning rate. Default=1.0
   --lr_step LR_STEP     Number of epochs for each learning rate decay.
                         Default=1
   --lr_gamma LR_GAMMA   Learning rate decay rate. Default=0.5
   --lr_decay_start LR_DECAY_START
                         Learning rate decay start at. Default=10
-  --iteration_per_update ITERATION_PER_UPDATE
-                        Number of feed-forward iterations for one parameter
-                        update. Default=1
+  --use_radam           Use rectified Adam as optimizer. Other lr arguments
+                        should be changed.
+  --use_adam            Use Adam as optimizer instead of SGD. Other lr
+                        arguments should be changed.
   --use_noam_decay      Use Noam learning rate decay, which is described in
                         "Attention is All You Need" paper.
   --lr_warmup_ratio LR_WARMUP_RATIO
                         Ratio of warming up steps from total iterations for
-                        Noam learning rate decay. Default=0.1
+                        Noam learning rate decay. Default=0.05
   --rl_lr RL_LR         Learning rate for reinforcement learning. Default=0.01
   --rl_n_samples RL_N_SAMPLES
                         Number of samples to get baseline. Default=1
@@ -98,19 +98,6 @@ optional arguments:
   --rl_n_gram RL_N_GRAM
                         Maximum number of tokens to calculate BLEU for
                         reinforcement learning. Default=6
-  --dsl                 Training with Dual Supervised Learning method.
-  --lm_n_epochs LM_N_EPOCHS
-                        Number of epochs for language model training.
-                        Default=10
-  --lm_batch_size LM_BATCH_SIZE
-                        Batch size for language model training. Default=512
-  --dsl_n_epochs DSL_N_EPOCHS
-                        Number of epochs for Dual Supervised Learning. '--
-                        n_epochs' - '--dsl_n_epochs' will be number of epochs
-                        for pretraining (without regularization term).
-  --dsl_lambda DSL_LAMBDA
-                        Lagrangian Multiplier for regularization term.
-                        Default=0.001
   --use_transformer     Set model architecture as Transformer.
   --n_splits N_SPLITS   Number of heads in multi-head attention in
                         Transformer. Default=8
