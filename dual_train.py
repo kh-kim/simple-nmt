@@ -5,7 +5,7 @@ import torch
 from torch import optim
 import torch.nn as nn
 
-from transformers import get_linear_schedule_with_warmup
+import torch_optimizer as custom_optim
 
 from simple_nmt.data_loader import DataLoader
 import simple_nmt.data_loader as data_loader
@@ -149,6 +149,18 @@ def define_argparser(is_continue=False):
         help='Lagrangian Multiplier for regularization term. Default=%(default)s'
     )
 
+    p.add_argument(
+        '--use_transformer',
+        action='store_true',
+        help='Set model architecture as Transformer.',
+    )
+    p.add_argument(
+        '--n_splits',
+        type=int,
+        default=8,
+        help='Number of heads in multi-head attention in Transformer. Default=%(default)s',
+    )
+
     config = p.parse_args()
 
     return config
@@ -172,24 +184,46 @@ def get_models(src_vocab_size, tgt_vocab_size, config):
         ),
     ]
 
-    models = [
-        Seq2Seq(
-            src_vocab_size,
-            config.word_vec_size,
-            config.hidden_size,
-            tgt_vocab_size,
-            n_layers=config.n_layers,
-            dropout_p=config.dropout,
-        ),
-        Seq2Seq(
-            tgt_vocab_size,
-            config.word_vec_size,
-            config.hidden_size,
-            src_vocab_size,
-            n_layers=config.n_layers,
-            dropout_p=config.dropout,
-        ),
-    ]
+    if config.use_transformer:
+        models = [
+            Transformer(
+                src_vocab_size,
+                config.hidden_size,
+                tgt_vocab_size,
+                n_splits=config.n_splits,
+                n_enc_blocks=config.n_layers,
+                n_dec_blocks=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+            Transformer(
+                tgt_vocab_size,
+                config.hidden_size,
+                src_vocab_size,
+                n_splits=config.n_splits,
+                n_enc_blocks=config.n_layers,
+                n_dec_blocks=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+        ]
+    else:
+        models = [
+            Seq2Seq(
+                src_vocab_size,
+                config.word_vec_size,
+                config.hidden_size,
+                tgt_vocab_size,
+                n_layers=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+            Seq2Seq(
+                tgt_vocab_size,
+                config.word_vec_size,
+                config.hidden_size,
+                src_vocab_size,
+                n_layers=config.n_layers,
+                dropout_p=config.dropout,
+            ),
+        ]
 
     return language_models, models
 
@@ -221,7 +255,7 @@ def main(config, model_weight=None, opt_weight=None):
         config.valid,
         (config.lang[:2], config.lang[-2:]),
         batch_size=config.lm_batch_size,
-        device=config.gpu_id,
+        device=-1,
         max_length=config.max_length,
         dsl=True,
     )
@@ -269,17 +303,23 @@ def main(config, model_weight=None, opt_weight=None):
         config.valid,
         (config.lang[:2], config.lang[-2:]),
         batch_size=config.batch_size,
-        device=config.gpu_id,
+        device=-1,
         max_length=config.max_length,
         dsl=True,
     )
 
     dsl_trainer = DSLTrainer(config)
 
-    optimizers = [
-        optim.Adam(models[0].parameters()),
-        optim.Adam(models[1].parameters()),
-    ]
+    if config.use_transformer:
+        optimizers = [
+            custom_optim.RAdam(models[0].parameters()),
+            custom_optim.RAdam(models[1].parameters()),
+        ]
+    else:
+        optimizers = [
+            optim.Adam(models[0].parameters()),
+            optim.Adam(models[1].parameters()),
+        ]
 
     if config.verbose >= 2:
         print(language_models)
