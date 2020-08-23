@@ -42,14 +42,14 @@ class Attention(nn.Module):
 
 class Encoder(nn.Module):
 
-    def __init__(self, word_vec_dim, hidden_size, n_layers=4, dropout_p=.2):
+    def __init__(self, word_vec_size, hidden_size, n_layers=4, dropout_p=.2):
         super(Encoder, self).__init__()
 
         # Be aware of value of 'batch_first' parameter.
         # Also, its hidden_size is half of original hidden_size,
         # because it is bidirectional.
         self.rnn = nn.LSTM(
-            word_vec_dim,
+            word_vec_size,
             int(hidden_size / 2),
             num_layers=n_layers,
             dropout=dropout_p,
@@ -58,7 +58,7 @@ class Encoder(nn.Module):
         )
 
     def forward(self, emb):
-        # |emb| = (batch_size, length, word_vec_dim)
+        # |emb| = (batch_size, length, word_vec_size)
 
         if isinstance(emb, tuple):
             x, lengths = emb
@@ -91,12 +91,12 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, word_vec_dim, hidden_size, n_layers=4, dropout_p=.2):
+    def __init__(self, word_vec_size, hidden_size, n_layers=4, dropout_p=.2):
         super(Decoder, self).__init__()
 
         # Be aware of value of 'batch_first' parameter and 'bidirectional' parameter.
         self.rnn = nn.LSTM(
-            word_vec_dim + hidden_size,
+            word_vec_size + hidden_size,
             hidden_size,
             num_layers=n_layers,
             dropout=dropout_p,
@@ -105,7 +105,7 @@ class Decoder(nn.Module):
         )
 
     def forward(self, emb_t, h_t_1_tilde, h_t_1):
-        # |emb_t| = (batch_size, 1, word_vec_dim)
+        # |emb_t| = (batch_size, 1, word_vec_size)
         # |h_t_1_tilde| = (batch_size, 1, hidden_size)
         # |h_t_1[0]| = (n_layers, batch_size, hidden_size)
         batch_size = emb_t.size(0)
@@ -147,14 +147,14 @@ class Seq2Seq(nn.Module):
     def __init__(
         self,
         input_size,
-        word_vec_dim,
+        word_vec_size,
         hidden_size,
         output_size,
         n_layers=4,
         dropout_p=.2
     ):
         self.input_size = input_size
-        self.word_vec_dim = word_vec_dim
+        self.word_vec_size = word_vec_size
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.n_layers = n_layers
@@ -162,15 +162,15 @@ class Seq2Seq(nn.Module):
 
         super(Seq2Seq, self).__init__()
 
-        self.emb_src = nn.Embedding(input_size, word_vec_dim)
-        self.emb_dec = nn.Embedding(output_size, word_vec_dim)
+        self.emb_src = nn.Embedding(input_size, word_vec_size)
+        self.emb_dec = nn.Embedding(output_size, word_vec_size)
 
         self.encoder = Encoder(
-            word_vec_dim, hidden_size,
+            word_vec_size, hidden_size,
             n_layers=n_layers, dropout_p=dropout_p,
         )
         self.decoder = Decoder(
-            word_vec_dim, hidden_size,
+            word_vec_size, hidden_size,
             n_layers=n_layers, dropout_p=dropout_p,
         )
         self.attn = Attention(hidden_size)
@@ -259,7 +259,7 @@ class Seq2Seq(nn.Module):
 
         # Get word embedding vectors for every time-step of input sentence.
         emb_src = self.emb_src(x)
-        # |emb_src| = (batch_size, length, word_vec_dim)
+        # |emb_src| = (batch_size, length, word_vec_size)
 
         # The last hidden state of the encoder would be a initial hidden state of decoder.
         h_src, h_0_tgt = self.encoder((emb_src, x_length))
@@ -268,7 +268,7 @@ class Seq2Seq(nn.Module):
 
         h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
         emb_tgt = self.emb_dec(tgt)
-        # |emb_tgt| = (batch_size, length, word_vec_dim)
+        # |emb_tgt| = (batch_size, length, word_vec_size)
         h_tilde = []
 
         h_t_tilde = None
@@ -282,7 +282,7 @@ class Seq2Seq(nn.Module):
             # Of course, because of sequential running in decoder,
             # this causes severe bottle-neck.
             emb_t = emb_tgt[:, t, :].unsqueeze(1)
-            # |emb_t| = (batch_size, 1, word_vec_dim)
+            # |emb_t| = (batch_size, 1, word_vec_size)
             # |h_t_tilde| = (batch_size, 1, hidden_size)
 
             decoder_output, decoder_hidden = self.decoder(emb_t,
@@ -336,7 +336,7 @@ class Seq2Seq(nn.Module):
             # Unlike training procedure,
             # take the last time-step's output during the inference.
             emb_t = self.emb_dec(y)
-            # |emb_t| = (batch_size, 1, word_vec_dim)
+            # |emb_t| = (batch_size, 1, word_vec_size)
 
             decoder_output, decoder_hidden = self.decoder(emb_t,
                                                           h_t_tilde,
@@ -463,7 +463,7 @@ class Seq2Seq(nn.Module):
             # |fab_h_t_tilde| = (current_batch_size, 1, hidden_size)
 
             emb_t = self.emb_dec(fab_input)
-            # |emb_t| = (current_batch_size, 1, word_vec_dim)
+            # |emb_t| = (current_batch_size, 1, word_vec_size)
 
             fab_decoder_output, (fab_hidden, fab_cell) = self.decoder(emb_t,
                                                                       fab_h_t_tilde,
