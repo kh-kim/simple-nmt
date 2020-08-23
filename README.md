@@ -17,6 +17,8 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 - Python 3.6 or higher
 - PyTorch 1.6 or higher
 - TorchText 0.5 or higher
+- PyTorch Ignite
+- [torch-optimizer 0.0.1a15](https://pypi.org/project/torch-optimizer/)
 
 ## Usage
 
