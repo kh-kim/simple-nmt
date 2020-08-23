@@ -44,6 +44,10 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
         engine.model.train()        
         engine.optimizer.zero_grad()
 
+        device = next(engine.model.parameters()).device
+        mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
+        mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1])
+
         # if 'is_src_target' is true, the trainer would train language model for source language.
         # For dsl case, both x and y has BOS and EOS tokens.
         # Thus, we need to remove BOS and EOS before the training.
@@ -98,6 +102,10 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
         engine.model.eval()
 
         with torch.no_grad():
+            device = next(engine.model.parameters()).device
+            mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
+            mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1])
+
             x = mini_batch.src[0][:, :-1] if engine.is_src_target else mini_batch.tgt[0][:, :-1]
             y = mini_batch.src[0][:, 1:] if engine.is_src_target else mini_batch.tgt[0][:, 1:]
             # |x| = |y| = (batch_size, length)

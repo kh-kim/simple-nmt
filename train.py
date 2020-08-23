@@ -219,22 +219,22 @@ def define_argparser(is_continue=False):
 def get_model(input_size, output_size, config):
     if config.use_transformer:
         model = Transformer(
-            input_size,
-            config.hidden_size,
-            output_size,
-            n_splits=config.n_splits,
-            n_enc_blocks=config.n_layers,
-            n_dec_blocks=config.n_layers,
-            dropout_p=config.dropout,
+            input_size,                     # Source vocabulary size
+            config.hidden_size,             # Transformer doesn't need word_vec_size.
+            output_size,                    # Target vocabulary size
+            n_splits=config.n_splits,       # Number of head in Multi-head Attention.
+            n_enc_blocks=config.n_layers,   # Number of encoder blocks
+            n_dec_blocks=config.n_layers,   # Number of decoder blocks
+            dropout_p=config.dropout,       # Dropout rate on each block
         )
     else:
         model = Seq2Seq(
             input_size,
-            config.word_vec_size,  # Word embedding vector size
-            config.hidden_size,  # LSTM's hidden vector size
+            config.word_vec_size,           # Word embedding vector size
+            config.hidden_size,             # LSTM's hidden vector size
             output_size,
-            n_layers=config.n_layers,  # number of layers in LSTM
-            dropout_p=config.dropout  # dropout-rate in LSTM
+            n_layers=config.n_layers,       # number of layers in LSTM
+            dropout_p=config.dropout        # dropout-rate in LSTM
         )
 
     return model
@@ -325,13 +325,13 @@ def main(config, model_weight=None, opt_weight=None):
     print_config(config)
 
     loader = DataLoader(
-        config.train,
-        config.valid,
-        (config.lang[:2], config.lang[-2:]),
+        config.train,                           # Train file name except extention, which is language.
+        config.valid,                           # Validation file name except extension.
+        (config.lang[:2], config.lang[-2:]),    # Source and target language.
         batch_size=config.batch_size,
-        device=-1, #config.gpu_id,
-        max_length=config.max_length,
-        dsl=False,
+        device=-1,                              # Lazy loading
+        max_length=config.max_length,           # Loger sequence will be excluded.
+        dsl=False,                              # Turn-off Dual-supervised Learning mode.
     )
 
     input_size, output_size = len(loader.src.vocab), len(loader.tgt.vocab)
@@ -374,8 +374,6 @@ def main(config, model_weight=None, opt_weight=None):
 
     if config.rl_n_epochs > 0:
         optimizer = optim.SGD(model.parameters(), lr=config.rl_lr)
-        #optimizer = optim.Adam(model.parameters(), lr=config.rl_lr)
-
         mrt_trainer = SingleTrainer(MinimumRiskTrainingEngine, config)
 
         mrt_trainer.train(

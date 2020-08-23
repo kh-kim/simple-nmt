@@ -102,29 +102,19 @@ def to_text(indice, vocab):
     return lines
 
 
-if __name__ == '__main__':
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
-    config = define_argparser()
+def is_dsl(train_config):
+    # return 'dsl_lambda' in vars(train_config).keys()
+    return not ('rl_n_epochs' in vars(train_config).keys())
 
-    # Load saved model.
-    saved_data = torch.load(
-        config.model,
-        map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id
-    )
 
-    # Load configuration setting in training.
-    train_config = saved_data['config']
-
-    if train_config.dsl:
+def get_vocabs(train_config, config, saved_data):
+    if is_dsl(train_config):
         assert config.lang is not None
 
         if config.lang == train_config.lang:
             is_reverse = False
         else:
-            if config.dsl:
-                is_reverse = True
-            else:
-                raise Error('You cannot translate %s with this model file.' % config.lang)
+            is_reverse = True
 
         if not is_reverse:
             # Load vocabularies from the model.
@@ -133,20 +123,19 @@ if __name__ == '__main__':
         else:
             src_vocab = saved_data['tgt_vocab']
             tgt_vocab = saved_data['src_vocab']
+
+        return src_vocab, tgt_vocab, is_reverse
     else:
         # Load vocabularies from the model.
         src_vocab = saved_data['src_vocab']
         tgt_vocab = saved_data['tgt_vocab']
 
-    # Initialize dataloader, but we don't need to read training & test corpus.
-    # What we need is just load vocabularies from the previously trained model.
-    loader = DataLoader()
-    loader.load_vocab(src_vocab, tgt_vocab)
-    input_size = len(loader.src.vocab)
-    output_size = len(loader.tgt.vocab)
+    return src_vocab, tgt_vocab, False
 
+
+def get_model(input_size, output_size, train_config, is_reverse=False):
     # Declare sequence-to-sequence model.
-    if not train_config.dsl and train_config.use_transformer:
+    if 'use_transformer' in vars(train_config).keys() and train_config.use_transformer:
         model = Transformer(
             input_size,
             train_config.hidden_size,
@@ -166,17 +155,40 @@ if __name__ == '__main__':
             dropout_p=train_config.dropout,
         )
 
-    if train_config.dsl:
+    if is_dsl(train_config):
         if not is_reverse:
-            model.load_state_dict(saved_data['models'][0])
+            model.load_state_dict(saved_data['model'][0])
         else:
-            model.load_state_dict(saved_data['models'][1])
+            model.load_state_dict(saved_data['model'][1])
     else:
         model.load_state_dict(saved_data['model'])  # Load weight parameters from the trained model.
     model.eval()  # We need to turn-on the evaluation mode, which turns off all drop-outs.
 
-    # We don't need to draw a computation graph, because we will have only inferences.
-    torch.set_grad_enabled(False)
+    return model
+
+
+if __name__ == '__main__':
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
+    config = define_argparser()
+
+    # Load saved model.
+    saved_data = torch.load(
+        config.model,
+        map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id
+    )
+
+    # Load configuration setting in training.
+    train_config = saved_data['config']
+
+    src_vocab, tgt_vocab, is_reverse = get_vocabs(train_config, config, saved_data)
+
+    # Initialize dataloader, but we don't need to read training & test corpus.
+    # What we need is just load vocabularies from the previously trained model.
+    loader = DataLoader()
+    loader.load_vocab(src_vocab, tgt_vocab)
+
+    input_size, output_size = len(loader.src.vocab), len(loader.tgt.vocab)
+    model = get_model(input_size, output_size, train_config, is_reverse)
 
     # Put models to device if it is necessary.
     if config.gpu_id >= 0:
@@ -185,7 +197,7 @@ if __name__ == '__main__':
     # Get sentences from standard input.
     lines = read_text()
 
-    with torch.no_grad():  # Also, declare again to prevent to get gradients.
+    with torch.no_grad():
         while len(lines) > 0:
             # Since packed_sequence must be sorted by decreasing order of length,
             # sorting by length in mini-batch should be restored by original order.
@@ -202,14 +214,15 @@ if __name__ == '__main__':
                 reverse=True,
             )
             sorted_lines = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
-            lengths = [sorted_tuples[i][1] for i in range(len(sorted_tuples))]
-            orders = [sorted_tuples[i][2] for i in range(len(sorted_tuples))]
+            lengths      = [sorted_tuples[i][1] for i in range(len(sorted_tuples))]
+            orders       = [sorted_tuples[i][2] for i in range(len(sorted_tuples))]
 
             # Converts string to list of index.
             x = loader.src.numericalize(
                 loader.src.pad(sorted_lines),
                 device='cuda:%d' % config.gpu_id if config.gpu_id >= 0 else 'cpu'
             )
+            # |x| = (batch_size, length, input_size)
 
             if config.beam_size == 1:
                 # Take inference for non-parallel beam-search.

@@ -59,8 +59,9 @@ class SingleBeamSearchBoard():
     ):
         # Calculate length-penalty,
         # because shorter sentence usually have bigger probability.
-        # Thus, we need to put penalty for shorter one.
-        p = ((min_length + length) / (min_length + 1)) ** alpha
+        # In fact, we represent this as log-probability, which is negative value.
+        # Thus, we need to multiply bigger penalty for shorter one.
+        p = ((min_length + 1) / (min_length + length))**alpha
 
         return p
 
@@ -138,21 +139,22 @@ class SingleBeamSearchBoard():
                 index=self.beam_indice[-1]
             ).contiguous()
 
-    def get_n_best(self, n=1, length_penalty=.2, eos_onehot_index=1):
+    def get_n_best(self, n=1, length_penalty=.2):
         sentences, probs, founds = [], [], []
 
         for t in range(len(self.word_indice)):  # for each time-step,
             for b in range(self.beam_size):  # for each beam,
-                if self.masks[t][b] == eos_onehot_index:  # if we had EOS on this time-step and beam,
+                if self.masks[t][b] == 1:  # if we had EOS on this time-step and beam,
                     # Take a record of penaltified log-proability.
-                    probs += [self.cumulative_probs[t][b] / self.get_length_penalty(t, alpha=length_penalty)]
+                    probs += [self.cumulative_probs[t][b] * self.get_length_penalty(t, alpha=length_penalty)]
                     founds += [(t, b)]
 
         # Also, collect log-probability from last time-step, for the case of EOS is not shown.
         for b in range(self.beam_size):
-            if self.cumulative_probs[-1][b] != -float('inf'):
+            if self.cumulative_probs[-1][b] != -float('inf'): # If this beam does not have EOS,
                 if not (len(self.cumulative_probs) - 1, b) in founds:
-                    probs += [self.cumulative_probs[-1][b]]
+                    probs += [self.cumulative_probs[-1][b] * self.get_length_penalty(len(self.cumulative_probs),
+                                                                                     alpha=length_penalty)]
                     founds += [(t, b)]
 
         # Sort and take n-best.
