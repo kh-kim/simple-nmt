@@ -132,7 +132,8 @@ class DualSupervisedTrainingEngine(Engine):
                                                     engine.optimizers):
             language_model.eval()
             model.train()
-            if engine.state.iteration % engine.config.iteration_per_update == 1:
+            if engine.state.iteration % engine.config.iteration_per_update == 1 or \
+                engine.config.iteration_per_update == 1:
                 optimizer.zero_grad()
 
         device = next(engine.models[0].parameters()).device

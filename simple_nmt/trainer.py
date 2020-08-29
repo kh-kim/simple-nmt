@@ -38,7 +38,8 @@ class MaximumLikelihoodEstimationEngine(Engine):
         # You have to reset the gradients of all model parameters
         # before to take another step in gradient descent.
         engine.model.train()
-        if engine.state.iteration % engine.config.iteration_per_update == 1:
+        if engine.state.iteration % engine.config.iteration_per_update == 1 or \
+            engine.config.iteration_per_update == 1:
             engine.optimizer.zero_grad()
 
         device = next(engine.model.parameters()).device
