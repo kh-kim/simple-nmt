@@ -162,7 +162,7 @@ class Seq2Seq(nn.Module):
 
         super(Seq2Seq, self).__init__()
 
-        self.emb_src = nn.Embedding(input_size, word_vec_size)
+        self.emb_enc = nn.Embedding(input_size, word_vec_size)
         self.emb_dec = nn.Embedding(output_size, word_vec_size)
 
         self.encoder = Encoder(
@@ -258,11 +258,11 @@ class Seq2Seq(nn.Module):
             tgt = tgt[0]
 
         # Get word embedding vectors for every time-step of input sentence.
-        emb_src = self.emb_src(x)
-        # |emb_src| = (batch_size, length, word_vec_size)
+        emb_enc = self.emb_enc(x)
+        # |emb_enc| = (batch_size, length, word_vec_size)
 
         # The last hidden state of the encoder would be a initial hidden state of decoder.
-        h_src, h_0_tgt = self.encoder((emb_src, x_length))
+        h_src, h_0_tgt = self.encoder((emb_enc, x_length))
         # |h_src| = (batch_size, length, hidden_size)
         # |h_0_tgt| = (n_layers * 2, batch_size, hidden_size / 2)
 
@@ -320,8 +320,8 @@ class Seq2Seq(nn.Module):
             x = src
         batch_size = x.size(0)
 
-        emb_src = self.emb_src(x)
-        h_src, h_0_tgt = self.encoder((emb_src, x_length))
+        emb_enc = self.emb_enc(x)
+        h_src, h_0_tgt = self.encoder((emb_enc, x_length))
         h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
 
         # Fill a vector, which has 'batch_size' dimension, with BOS value.
@@ -387,8 +387,8 @@ class Seq2Seq(nn.Module):
             x = src
         batch_size = x.size(0)
 
-        emb_src = self.emb_src(x)
-        h_src, h_0_tgt = self.encoder((emb_src, x_length))
+        emb_enc = self.emb_enc(x)
+        h_src, h_0_tgt = self.encoder((emb_enc, x_length))
         # |h_src| = (batch_size, length, hidden_size)
         h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
 
