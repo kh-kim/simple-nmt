@@ -73,14 +73,13 @@ class SingleBeamSearchBoard():
 
     def get_batch(self):
         y_hat = self.word_indice[-1].unsqueeze(-1)
-        prev_status = [v for k, v in self.prev_status.items()]
-
         # |y_hat| = (beam_size, 1)
         # if model != transformer:
         #     |hidden| = |cell| = (n_layers, beam_size, hidden_size)
         #     |h_t_tilde| = (beam_size, 1, hidden_size) or None
         # else:
-        # return tuple([y_hat] + prev_status)
+        #     |prev_state_i| = (beam_size, length, hidden_size),
+        #     where i is an index of layer.
         return y_hat, self.prev_status
 
     def collect_result(self, y_hat, prev_status):
@@ -103,16 +102,18 @@ class SingleBeamSearchBoard():
         # Third, add expanded cumulative probability to 'y_hat'
         cumulative_prob = self.cumulative_probs[-1].masked_fill_(self.masks[-1], -float('inf'))
         cumulative_prob = y_hat + cumulative_prob.view(-1, 1, 1).expand(self.beam_size, 1, output_size)
+        # |cumulative_prob| = (beam_size, 1, output_size)
+
         # Now, we have new top log-probability and its index.
         # We picked top index as many as 'beam_size'.
         # Be aware that we picked top-k from whole batch through 'view(-1)'.
         top_log_prob, top_indice = torch.topk(
-            cumulative_prob.view(-1),
+            cumulative_prob.view(-1), # (beam_size * output_size,)
             self.beam_size,
             dim=-1,
         )
-        # |top_log_prob| = (beam_size)
-        # |top_indice| = (beam_size)
+        # |top_log_prob| = (beam_size,)
+        # |top_indice| = (beam_size,)
 
         # Because we picked from whole batch, original word index should be calculated again.
         self.word_indice += [top_indice.fmod(output_size)]
