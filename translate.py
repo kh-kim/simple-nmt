@@ -206,7 +206,7 @@ if __name__ == '__main__':
             # sorting by length in mini-batch should be restored by original order.
             # Therefore, we need to memorize the original index of the sentence.
             lengths         = [len(line) for line in lines]
-            original_indice = [i for i in range(config.batch_size)]
+            original_indice = [i for i in range(len(lines))]
 
             sorted_tuples = sorted(
                 zip(lines, lengths, original_indice),
@@ -222,12 +222,14 @@ if __name__ == '__main__':
                 loader.src.pad(sorted_lines),
                 device='cuda:%d' % config.gpu_id if config.gpu_id >= 0 else 'cpu'
             )
-            # |x| = (batch_size, length, input_size)
+            # |x| = (batch_size, length)
 
             if config.beam_size == 1:
-                y_hat, indice = model.search(x)
-                output = to_text(indice, loader.tgt.vocab)
+                y_hats, indice = model.search(x)
+                # |y_hats| = (batch_size, length, output_size)
+                # |indice| = (batch_size, length)
 
+                output = to_text(indice, loader.tgt.vocab)
                 sorted_tuples = sorted(zip(output, original_indice), key=itemgetter(1))
                 output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
 
