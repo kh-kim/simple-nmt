@@ -401,26 +401,26 @@ class Seq2Seq(nn.Module):
                 'hidden_state': {
                     'init_status': h_0_tgt[0][:, i, :].unsqueeze(1),
                     'batch_dim_index': 1,
-                },
+                }, # |hidden_state| = (n_layers, batch_size, hidden_size)
                 'cell_state': {
                     'init_status': h_0_tgt[1][:, i, :].unsqueeze(1),
                     'batch_dim_index': 1,
-                },
+                }, # |cell_state| = (n_layers, batch_size, hidden_size)
                 'h_t_1_tilde': {
                     'init_status': None,
                     'batch_dim_index': 0,
-                },
+                }, # |h_t_1_tilde| = (batch_size, 1, hidden_size)
             },
             beam_size=beam_size,
             max_length=max_length,
         ) for i in range(batch_size)]
-        done_cnt = [board.is_done() for board in boards]
+        is_done = [board.is_done() for board in boards]
 
         length = 0
-        # Run loop while sum of 'done_cnt' is smaller than batch_size, 
+        # Run loop while sum of 'is_done' is smaller than batch_size, 
         # or length is still smaller than max_length.
-        while sum(done_cnt) < batch_size and length <= max_length:
-            # current_batch_size = sum(done_cnt) * beam_size
+        while sum(is_done) < batch_size and length <= max_length:
+            # current_batch_size = sum(is_done) * beam_size
 
             # Initialize fabricated variables.
             # As far as batch-beam-search is running, 
@@ -469,8 +469,7 @@ class Seq2Seq(nn.Module):
 
             fab_decoder_output, (fab_hidden, fab_cell) = self.decoder(emb_t,
                                                                       fab_h_t_tilde,
-                                                                      (fab_hidden, fab_cell)
-                                                                      )
+                                                                      (fab_hidden, fab_cell))
             # |fab_decoder_output| = (current_batch_size, 1, hidden_size)
             context_vector = self.attn(fab_h_src, fab_decoder_output, fab_mask)
             # |context_vector| = (current_batch_size, 1, hidden_size)
@@ -503,7 +502,7 @@ class Seq2Seq(nn.Module):
                     )
                     cnt += 1
 
-            done_cnt = [board.is_done() for board in boards]
+            is_done = [board.is_done() for board in boards]
             length += 1
 
         # pick n-best hypothesis.
