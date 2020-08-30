@@ -15,7 +15,7 @@ def define_argparser():
     p = argparse.ArgumentParser()
 
     p.add_argument(
-        '--model',
+        '--model_fn',
         required=True,
         help='Model file name to use'
     )
@@ -68,7 +68,7 @@ def define_argparser():
     return config
 
 
-def read_text():
+def read_text(batch_size=128):
     # This method gets sentences from standard input and tokenize those.
     lines = []
 
@@ -78,7 +78,12 @@ def read_text():
         if line.strip() != '':
             lines += [line.strip().split(' ')]
 
-    return lines
+        if len(lines) >= batch_size:
+            yield lines
+            lines = []
+
+    if len(lines) > 0:
+        yield lines
 
 
 def to_text(indice, vocab):
@@ -173,7 +178,7 @@ if __name__ == '__main__':
 
     # Load saved model.
     saved_data = torch.load(
-        config.model,
+        config.model_fn,
         map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id
     )
 
@@ -194,28 +199,23 @@ if __name__ == '__main__':
     if config.gpu_id >= 0:
         model.cuda(config.gpu_id)
 
-    # Get sentences from standard input.
-    lines = read_text()
-
     with torch.no_grad():
-        while len(lines) > 0:
+        # Get sentences from standard input.
+        for lines in read_text(batch_size=config.batch_size):
             # Since packed_sequence must be sorted by decreasing order of length,
             # sorting by length in mini-batch should be restored by original order.
             # Therefore, we need to memorize the original index of the sentence.
-            sorted_lines = lines[:config.batch_size]
-            lines = lines[config.batch_size:]
-
-            lengths = [len(_) for _ in sorted_lines]
-            orders = [i for i in range(len(sorted_lines))]
+            lengths         = [len(line) for line in lines]
+            original_indice = [i for i in range(config.batch_size)]
 
             sorted_tuples = sorted(
-                zip(sorted_lines, lengths, orders),
+                zip(lines, lengths, original_indice),
                 key=itemgetter(1),
                 reverse=True,
             )
-            sorted_lines = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
-            lengths      = [sorted_tuples[i][1] for i in range(len(sorted_tuples))]
-            orders       = [sorted_tuples[i][2] for i in range(len(sorted_tuples))]
+            sorted_lines    = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
+            lengths         = [sorted_tuples[i][1] for i in range(len(sorted_tuples))]
+            original_indice = [sorted_tuples[i][2] for i in range(len(sorted_tuples))]
 
             # Converts string to list of index.
             x = loader.src.numericalize(
@@ -225,11 +225,10 @@ if __name__ == '__main__':
             # |x| = (batch_size, length, input_size)
 
             if config.beam_size == 1:
-                # Take inference for non-parallel beam-search.
                 y_hat, indice = model.search(x)
                 output = to_text(indice, loader.tgt.vocab)
 
-                sorted_tuples = sorted(zip(output, orders), key=itemgetter(1))
+                sorted_tuples = sorted(zip(output, original_indice), key=itemgetter(1))
                 output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
 
                 sys.stdout.write('\n'.join(output) + '\n')
@@ -243,11 +242,11 @@ if __name__ == '__main__':
                     length_penalty=config.length_penalty,
                 )
 
-                # Restore the original orders.
+                # Restore the original_indice.
                 output = []
                 for i in range(len(batch_indice)):
                     output += [to_text(batch_indice[i], loader.tgt.vocab)]
-                sorted_tuples = sorted(zip(output, orders), key=itemgetter(1))
+                sorted_tuples = sorted(zip(output, original_indice), key=itemgetter(1))
                 output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
 
                 for i in range(len(output)):

@@ -77,6 +77,7 @@ def define_argparser(is_continue=False):
     )
     p.add_argument(
         '--init_epoch',
+        required=is_continue,
         type=int,
         default=1,
         help='Set initial epoch number, which can be useful in continue training. Default=%(default)s'
