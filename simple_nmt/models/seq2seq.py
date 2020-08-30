@@ -319,6 +319,7 @@ class Seq2Seq(nn.Module):
             mask = None
         batch_size = x.size(0)
 
+        # Same procedure as teacher forcing.
         emb_src = self.emb_src(x)
         h_src, h_0_tgt = self.encoder((emb_src, x_length))
         decoder_hidden = self.fast_merge_encoder_hiddens(h_0_tgt)
