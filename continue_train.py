@@ -9,16 +9,27 @@ from train import main
 
 def overwrite_config(config, prev_config):
     # This method provides a compatibility for new or missing arguments.
-    for key in vars(prev_config).keys():
-        if '--%s' % key not in sys.argv:
-            if vars(prev_config).get(key) is not None:
-                vars(config)[key] = vars(prev_config)[key]
+    for prev_key in vars(prev_config).keys():
+        if not prev_key in vars(config).keys():
+            # No such argument in current config. Ignore that value.
+            print('WARNING!!! Argument "--%s" is not found in current argument parser.\tIgnore saved value:' % prev_key,
+                  vars(prev_config)[prev_key])
+
+    for key in vars(config).keys():
+        if not key in vars(prev_config).keys():
+            # No such argument in saved file. Use current value.
+            print('WARNING!!! Argument "--%s" is not found in saved model.\tUse current value:' % key,
+                  vars(config)[key])
+        elif vars(config)[key] != vars(prev_config)[key]:
+            if '--%s' % key in sys.argv:
+                # User changed argument value at this execution.
+                print('WARNING!!! You changed value for argument "--%s".\tUse current value:' % key,
+                      vars(config)[key])
             else:
-                # Missing argument
-                print('WARNING!!! Argument "--%s" is not found in current argument parser.\tSaved value:' % key, vars(prev_config)[key])
-        else:
-            # Argument value is change from saved model.
-            print('WARNING!!! Argument "--%s" is not loaded from saved model.\tCurrent value:' % key, vars(config)[key])
+                # User didn't changed at this execution, but current config and saved config is different.
+                # This may caused by user's intension at last execution.
+                # Load old value, and replace current value.
+                vars(config)[key] = vars(prev_config)[key]
 
     return config
 

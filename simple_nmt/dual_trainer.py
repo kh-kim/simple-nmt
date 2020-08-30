@@ -143,13 +143,16 @@ class DualSupervisedTrainingEngine(Engine):
         with autocast():
             # X2Y
             x, y = (mini_batch.src[0][:, 1:-1], mini_batch.src[1] - 2), mini_batch.tgt[0][:, :-1]
+            p_hat_x, p_hat_y = None, None
             # |x| = (batch_size, n)
             # |y| = (batch_size, m)
             y_hat = engine.models[X2Y](x, y)
             # |y_hat| = (batch_size, m, y_vocab_size)
-            with torch.no_grad():
-                p_hat_y = engine.language_models[X2Y](y)
-                # |p_hat_y| = |y_hat|
+            
+            if engine.state.epoch > engine.config.dsl_n_warmup_epochs:
+                with torch.no_grad():
+                    p_hat_y = engine.language_models[X2Y](y)
+                    # |p_hat_y| = |y_hat|
 
             #Y2X
             # Since encoder in seq2seq takes packed_sequence instance,
@@ -164,9 +167,10 @@ class DualSupervisedTrainingEngine(Engine):
             x_hat = engine.models[Y2X](y, x).index_select(dim=0, index=restore_indice)
             # |x_hat| = (batch_size, n, x_vocab_size)
 
-            with torch.no_grad():
-                p_hat_x = engine.language_models[Y2X](x).index_select(dim=0, index=restore_indice)
-                # |p_hat_x| = |x_hat|
+            if engine.state.epoch > engine.config.dsl_n_warmup_epochs:
+                with torch.no_grad():
+                    p_hat_x = engine.language_models[Y2X](x).index_select(dim=0, index=restore_indice)
+                    # |p_hat_x| = |x_hat|
 
             x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
             loss_x2y, loss_y2x, dual_loss = DualSupervisedTrainingEngine._get_loss(
@@ -195,20 +199,21 @@ class DualSupervisedTrainingEngine(Engine):
         g_norm = float(get_grad_norm(list(engine.models[X2Y].parameters()) +
                                      list(engine.models[Y2X].parameters())))
 
-        for model, optimizer, scaler in zip(engine.models,
-                                            engine.optimizers,
-                                            engine.scalers):
-            torch_utils.clip_grad_norm_(
-                model.parameters(),
-                engine.config.max_grad_norm,
-            )
-            # Take a step of gradient descent.
-            if engine.config.gpu_id >= 0:
-                # Use scaler instead of engine.optimizer.step()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                optimizer.step()
+        if engine.state.iteration % engine.config.iteration_per_update == 0:
+            for model, optimizer, scaler in zip(engine.models,
+                                                engine.optimizers,
+                                                engine.scalers):
+                torch_utils.clip_grad_norm_(
+                    model.parameters(),
+                    engine.config.max_grad_norm,
+                )
+                # Take a step of gradient descent.
+                if engine.config.gpu_id >= 0:
+                    # Use scaler instead of engine.optimizer.step()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
 
         return {
             'x2y': float(loss_x2y / mini_batch.src[1].sum()),
@@ -336,8 +341,6 @@ class DualSupervisedTrainingEngine(Engine):
 
     @staticmethod
     def check_best(engine):
-        from copy import deepcopy
-
         x2y = float(engine.state.metrics['x2y'])
         if x2y <= engine.best_x2y:
             engine.best_x2y = x2y

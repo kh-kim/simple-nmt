@@ -312,8 +312,8 @@ def main(config, model_weight=None, opt_weight=None):
 
     if config.use_transformer:
         optimizers = [
-            custom_optim.RAdam(models[0].parameters()),
-            custom_optim.RAdam(models[1].parameters()),
+            custom_optim.RAdam(models[0].parameters(), lr=1e-3),
+            custom_optim.RAdam(models[1].parameters(), lr=1e-3),
         ]
     else:
         optimizers = [
