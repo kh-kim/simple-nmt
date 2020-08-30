@@ -162,7 +162,7 @@ class Seq2Seq(nn.Module):
 
         super(Seq2Seq, self).__init__()
 
-        self.emb_enc = nn.Embedding(input_size, word_vec_size)
+        self.emb_src = nn.Embedding(input_size, word_vec_size)
         self.emb_dec = nn.Embedding(output_size, word_vec_size)
 
         self.encoder = Encoder(
@@ -258,11 +258,11 @@ class Seq2Seq(nn.Module):
             tgt = tgt[0]
 
         # Get word embedding vectors for every time-step of input sentence.
-        emb_enc = self.emb_enc(x)
-        # |emb_enc| = (batch_size, length, word_vec_size)
+        emb_src = self.emb_src(x)
+        # |emb_src| = (batch_size, length, word_vec_size)
 
         # The last hidden state of the encoder would be a initial hidden state of decoder.
-        h_src, h_0_tgt = self.encoder((emb_enc, x_length))
+        h_src, h_0_tgt = self.encoder((emb_src, x_length))
         # |h_src| = (batch_size, length, hidden_size)
         # |h_0_tgt| = (n_layers * 2, batch_size, hidden_size / 2)
 
@@ -311,23 +311,22 @@ class Seq2Seq(nn.Module):
         return y_hat
 
     def search(self, src, is_greedy=True, max_length=255):
-        mask, x_length = None, None
-
         if isinstance(src, tuple):
             x, x_length = src
             mask = self.generate_mask(x, x_length)
         else:
-            x = src
+            x, x_length = src, None
+            mask = None
         batch_size = x.size(0)
 
-        emb_enc = self.emb_enc(x)
-        h_src, h_0_tgt = self.encoder((emb_enc, x_length))
-        h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
+        emb_src = self.emb_src(x)
+        h_src, h_0_tgt = self.encoder((emb_src, x_length))
+        decoder_hidden = self.fast_merge_encoder_hiddens(h_0_tgt)
 
         # Fill a vector, which has 'batch_size' dimension, with BOS value.
         y = x.new(batch_size, 1).zero_() + data_loader.BOS
+
         is_decoding = x.new_ones(batch_size, 1).bool()
-        decoder_hidden = h_0_tgt
         h_t_tilde, y_hats, indice = None, [], []
         
         # Repeat a loop while sum of 'is_decoding' flag is bigger than 0,
@@ -340,8 +339,7 @@ class Seq2Seq(nn.Module):
 
             decoder_output, decoder_hidden = self.decoder(emb_t,
                                                           h_t_tilde,
-                                                          decoder_hidden
-                                                          )
+                                                          decoder_hidden)
             context_vector = self.attn(h_src, decoder_output, mask)
             h_t_tilde = self.tanh(self.concat(torch.cat([decoder_output,
                                                          context_vector
@@ -351,19 +349,22 @@ class Seq2Seq(nn.Module):
             y_hats += [y_hat]
 
             if is_greedy:
-                y = torch.topk(y_hat, 1, dim=-1)[1].squeeze(-1)
+                y = y_hat.argmax(dim=-1)
+                # |y| = (batch_size, 1)
             else:
                 # Take a random sampling based on the multinoulli distribution.
                 y = torch.multinomial(y_hat.exp().view(batch_size, -1), 1)
+                # |y| = (batch_size, 1)
+
             # Put PAD if the sample is done.
             y = y.masked_fill_(~is_decoding, data_loader.PAD)
+            # Update is_decoding if there is EOS token.
             is_decoding = is_decoding * torch.ne(y, data_loader.EOS)
-            # |y| = (batch_size, 1)
             # |is_decoding| = (batch_size, 1)
             indice += [y]
 
         y_hats = torch.cat(y_hats, dim=1)
-        indice = torch.cat(indice, dim=-1)
+        indice = torch.cat(indice, dim=1)
         # |y_hat| = (batch_size, length, output_size)
         # |indice| = (batch_size, length)
 
@@ -387,8 +388,8 @@ class Seq2Seq(nn.Module):
             x = src
         batch_size = x.size(0)
 
-        emb_enc = self.emb_enc(x)
-        h_src, h_0_tgt = self.encoder((emb_enc, x_length))
+        emb_src = self.emb_src(x)
+        h_src, h_0_tgt = self.encoder((emb_src, x_length))
         # |h_src| = (batch_size, length, hidden_size)
         h_0_tgt = self.fast_merge_encoder_hiddens(h_0_tgt)
 
