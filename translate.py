@@ -222,7 +222,7 @@ if __name__ == '__main__':
                 loader.src.pad(sorted_lines),
                 device='cuda:%d' % config.gpu_id if config.gpu_id >= 0 else 'cpu'
             )
-            # |x| = (batch_size, length, input_size)
+            # |x| = (batch_size, length)
 
             if config.beam_size == 1:
                 y_hats, indice = model.search(x)
