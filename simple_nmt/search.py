@@ -107,11 +107,18 @@ class SingleBeamSearchBoard():
         # Now, we have new top log-probability and its index.
         # We picked top index as many as 'beam_size'.
         # Be aware that we picked top-k from whole batch through 'view(-1)'.
-        top_log_prob, top_indice = torch.topk(
-            cumulative_prob.view(-1), # (beam_size * output_size,)
-            self.beam_size,
-            dim=-1,
-        )
+
+        # Following lines are using torch.topk, which is slower than torch.sort.
+        # top_log_prob, top_indice = torch.topk(
+        #     cumulative_prob.view(-1), # (beam_size * output_size,)
+        #     self.beam_size,
+        #     dim=-1,
+        # )
+
+        # Following lines are using torch.sort, instead of using torch.topk.
+        top_log_prob, top_indice = cumulative_prob.view(-1).sort(descending=True)
+        top_log_prob, top_indice = top_log_prob[:self.beam_size], top_indice[:self.beam_size]
+
         # |top_log_prob| = (beam_size,)
         # |top_indice| = (beam_size,)
 
