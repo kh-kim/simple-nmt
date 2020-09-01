@@ -1,6 +1,6 @@
 MODEL_FN=$1
 GPU_ID=-1
-BEAM_SIZE=1
+BEAM_SIZE=5
 TEST_FN=./corpus.shuf.test.tok.bpe.head-1000.ko
 REF_FN=./corpus.shuf.test.tok.bpe.head-1000.detok.tok.en
 
