@@ -82,6 +82,7 @@ class SingleBeamSearchBoard():
         #     where i is an index of layer.
         return y_hat, self.prev_status
 
+    #@profile
     def collect_result(self, y_hat, prev_status):
         # |y_hat| = (beam_size, 1, output_size)
         # prev_status is a dict, which has following keys:
