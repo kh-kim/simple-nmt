@@ -411,6 +411,7 @@ class Transformer(nn.Module):
 
         return y_hats, indice
 
+    #@profile
     def batch_beam_search(
         self,
         x,

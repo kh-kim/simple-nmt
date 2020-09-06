@@ -371,6 +371,7 @@ class Seq2Seq(nn.Module):
 
         return y_hats, indice
 
+    #@profile
     def batch_beam_search(
         self,
         src,

@@ -92,7 +92,7 @@ def define_argparser(is_continue=False):
     p.add_argument(
         '--dropout',
         type=float,
-        default=.3,
+        default=.2,
         help='Dropout rate. Default=%(default)s'
     )
     p.add_argument(
