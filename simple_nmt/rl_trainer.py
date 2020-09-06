@@ -105,7 +105,8 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         engine.model.train()
         if engine.state.iteration % engine.config.iteration_per_update == 1 or \
             engine.config.iteration_per_update == 1:
-            engine.optimizer.zero_grad()
+            if engine.state.iteration > 1:
+                engine.optimizer.zero_grad()
 
         device = next(engine.model.parameters()).device
         mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1])
@@ -174,7 +175,8 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         p_norm = float(get_parameter_norm(engine.model.parameters()))
         g_norm = float(get_grad_norm(engine.model.parameters()))
 
-        if engine.state.iteration % engine.config.iteration_per_update == 0:
+        if engine.state.iteration % engine.config.iteration_per_update == 0 and \
+            engine.state.iteration > 0:
             # In orther to avoid gradient exploding, we apply gradient clipping.
             torch_utils.clip_grad_norm_(
                 engine.model.parameters(),
