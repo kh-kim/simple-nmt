@@ -56,6 +56,11 @@ def define_argparser(is_continue=False):
         default=-1,
         help='GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=%(default)s'
     )
+    p.add_argument(
+        '--use_autocast',
+        action='store_true',
+        help='',
+    )
 
     p.add_argument(
         '--batch_size',

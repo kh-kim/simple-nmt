@@ -34,6 +34,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
         self.scaler = GradScaler()
 
     @staticmethod
+    #@profile
     def train(engine, mini_batch):
         # You have to reset the gradients of all model parameters
         # before to take another step in gradient descent.
@@ -54,7 +55,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
         # |x| = (batch_size, length)
         # |y| = (batch_size, length)
 
-        with autocast():
+        with autocast(engine.config.use_autocast):
             # Take feed-forward
             # Similar as before, the input of decoder does not have EOS token.
             # Thus, remove EOS token for decoder input.
@@ -67,7 +68,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
             )
             backward_target = loss.div(y.size(0)).div(engine.config.iteration_per_update)
 
-        if engine.config.gpu_id >= 0:
+        if engine.config.gpu_id >= 0 and engine.config.use_autocast:
             engine.scaler.scale(backward_target).backward()
         else:
             backward_target.backward()
@@ -84,7 +85,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
                 engine.config.max_grad_norm,
             )
             # Take a step of gradient descent.
-            if engine.config.gpu_id >= 0:
+            if engine.config.gpu_id >= 0 and engine.config.use_autocast:
                 # Use scaler instead of engine.optimizer.step() if using GPU.
                 engine.scaler.step(engine.optimizer)
                 engine.scaler.update()
@@ -117,7 +118,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
             # |x| = (batch_size, length)
             # |y| = (batch_size, length)
 
-            with autocast():
+            with autocast(engine.config.use_autocast):
                 y_hat = engine.model(x, mini_batch.tgt[0][:, :-1])
                 # |y_hat| = (batch_size, n_classes)
                 loss = engine.crit(
