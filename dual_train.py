@@ -34,6 +34,11 @@ def define_argparser(is_continue=False):
         help='Model file name to save. Additional information would be annotated to the file name.'
     )
     p.add_argument(
+        '--lm_fn',
+        required=not is_continue,
+        help='LM file name, which is trained with lm_train.py.'
+    )
+    p.add_argument(
         '--train',
         required=not is_continue,
         help='Training set file name except the extention. (ex: train.en --> train)'
@@ -125,19 +130,6 @@ def define_argparser(is_continue=False):
     )
 
     p.add_argument(
-        '--lm_n_epochs',
-        type=int,
-        default=5,
-        help='Number of epochs for language model training. Default=%(default)s'
-    )
-    p.add_argument(
-        '--lm_batch_size',
-        type=int,
-        default=128,
-        help='Batch size for language model training. Default=%(default)s',
-    )
-
-    p.add_argument(
         '--dsl_n_warmup_epochs',
         type=int,
         default=2,
@@ -165,6 +157,14 @@ def define_argparser(is_continue=False):
     config = p.parse_args()
 
     return config
+
+
+def load_lm(fn, language_models):
+    saved_data = torch.load(fn, map_location='cpu')
+
+    model_weight = saved_data['model']
+    language_models[0].load_state_dict(model_weight[0])
+    language_models[1].load_state_dict(model_weight[1])
 
 
 def get_models(src_vocab_size, tgt_vocab_size, config):
@@ -255,7 +255,7 @@ def main(config, model_weight=None, opt_weight=None):
         config.train,
         config.valid,
         (config.lang[:2], config.lang[-2:]),
-        batch_size=config.lm_batch_size,
+        batch_size=config.batch_size,
         device=-1,
         max_length=config.max_length,
         dsl=True,
@@ -280,34 +280,13 @@ def main(config, model_weight=None, opt_weight=None):
         for model, w in zip(models + language_models, model_weight):
             model.load_state_dict(w)
 
+    load_lm(config.lm_fn, language_models)
+
     if config.gpu_id >= 0:
         for lm, seq2seq, crit in zip(language_models, models, crits):
             lm.cuda(config.gpu_id)
             seq2seq.cuda(config.gpu_id)
             crit.cuda(config.gpu_id)
-
-    for lm, crit in zip(language_models, crits):
-        optimizer = optim.Adam(lm.parameters())
-        lm_trainer = LMTrainer(config)
-
-        lm_trainer.train(
-            lm, crit, optimizer,
-            train_loader=loader.train_iter,
-            valid_loader=loader.valid_iter,
-            src_vocab=loader.src.vocab if lm.vocab_size == src_vocab_size else None,
-            tgt_vocab=loader.tgt.vocab if lm.vocab_size == tgt_vocab_size else None,
-            n_epochs=config.lm_n_epochs,
-        )
-
-    loader = DataLoader(
-        config.train,
-        config.valid,
-        (config.lang[:2], config.lang[-2:]),
-        batch_size=config.batch_size,
-        device=-1,
-        max_length=config.max_length,
-        dsl=True,
-    )
 
     dsl_trainer = DSLTrainer(config)
 
