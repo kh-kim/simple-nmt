@@ -65,7 +65,7 @@ class DualSupervisedTrainingEngine(Engine):
         l_ = l.index_select(dim=0, index=indice).contiguous()
 
         # generate information to restore the re-ordering.
-        restore_indice = (-indice).topk(l.size(0))[1]
+        restore_indice = indice.sort(descending=False)[1]
 
         return x_, (y_, l_), restore_indice
 
@@ -78,50 +78,50 @@ class DualSupervisedTrainingEngine(Engine):
         # |x_lm| = |x_hat|
         # |y_lm| = |y_hat|
 
-        loss_x2y = crits[X2Y](
+        log_p_y_given_x = -crits[X2Y](
             y_hat.contiguous().view(-1, y_hat.size(-1)),
             y.contiguous().view(-1),
         )
-        loss_y2x = crits[Y2X](
+        log_p_x_given_y = -crits[Y2X](
             x_hat.contiguous().view(-1, x_hat.size(-1)),
             x.contiguous().view(-1),
         )
-        # |loss_x2y| = (batch_size * m)
-        # |loss_y2x| = (batch_size * n)
+        # |log_p_y_given_x| = (batch_size * m)
+        # |log_p_x_given_y| = (batch_size * n)
 
-        loss_x2y = loss_x2y.view(y.size(0), -1).sum(dim=-1)
-        loss_y2x = loss_y2x.view(x.size(0), -1).sum(dim=-1)
-        # |loss_x2y| = |loss_y2x| = (batch_size, )
+        log_p_y_given_x = log_p_y_given_x.view(y.size(0), -1).sum(dim=-1)
+        log_p_x_given_y = log_p_x_given_y.view(x.size(0), -1).sum(dim=-1)
+        # |log_p_y_given_x| = |log_p_x_given_y| = (batch_size, )
 
         if x_lm is not None and y_lm is not None:
-            lm_loss_x2y = crits[X2Y](
-                y_lm.contiguous().view(-1, y_lm.size(-1)),
-                y.contiguous().view(-1),
-            )
-            lm_loss_y2x = crits[Y2X](
+            log_p_x = -crits[Y2X](
                 x_lm.contiguous().view(-1, x_lm.size(-1)),
                 x.contiguous().view(-1),
             )
-            # |lm_loss_x2y| = (batch_size * m)
-            # |lm_loss_y2x| = (batch_size * n)
+            log_p_y = -crits[X2Y](
+                y_lm.contiguous().view(-1, y_lm.size(-1)),
+                y.contiguous().view(-1),
+            )
+            # |log_p_x| = (batch_size * n)
+            # |log_p_y| = (batch_size * m)
 
-            lm_loss_x2y = lm_loss_x2y.view(y.size(0), -1).sum(dim=-1)
-            lm_loss_y2x = lm_loss_y2x.view(x.size(0), -1).sum(dim=-1)
-            # |lm_loss_x2y| = (batch_size, )
-            # |lm_loss_y2x| = (batch_size, )
+            log_p_x = log_p_x.view(x.size(0), -1).sum(dim=-1)
+            log_p_y = log_p_y.view(y.size(0), -1).sum(dim=-1)
+            # |log_p_x| = (batch_size, )
+            # |log_p_y| = (batch_size, )
 
             # Just for logging: both losses are detached.
-            dual_loss = lagrange * ((-lm_loss_y2x + -loss_x2y.detach()) - (-lm_loss_x2y + -loss_y2x.detach()))**2
+            dual_loss = lagrange * ((log_p_x + log_p_y_given_x.detach()) - (log_p_y + log_p_x_given_y.detach()))**2
 
             # Note that 'detach()' is used to prevent unnecessary back-propagation.
-            loss_x2y += lagrange * ((-lm_loss_y2x + -loss_x2y) - (-lm_loss_x2y + -loss_y2x.detach()))**2
-            loss_y2x += lagrange * ((-lm_loss_y2x + -loss_x2y.detach()) - (-lm_loss_x2y + -loss_y2x))**2
+            log_p_y_given_x += lagrange * ((log_p_x + log_p_y_given_x) - (log_p_y + log_p_x_given_y.detach()))**2
+            log_p_x_given_y += lagrange * ((log_p_x + log_p_y_given_x.detach()) - (log_p_y + log_p_x_given_y))**2
         else:
             dual_loss = None
 
         return (
-            loss_x2y.sum(),
-            loss_y2x.sum(),
+            log_p_y_given_x.sum(),
+            log_p_x_given_y.sum(),
             float(dual_loss.sum()) if dual_loss is not None else .0,
         )
 
@@ -134,7 +134,8 @@ class DualSupervisedTrainingEngine(Engine):
             model.train()
             if engine.state.iteration % engine.config.iteration_per_update == 1 or \
                 engine.config.iteration_per_update == 1:
-                optimizer.zero_grad()
+                if engine.state.iteration > 1:
+                    optimizer.zero_grad()
 
         device = next(engine.models[0].parameters()).device
         mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1].to(device))
@@ -143,7 +144,7 @@ class DualSupervisedTrainingEngine(Engine):
         with autocast():
             # X2Y
             x, y = (mini_batch.src[0][:, 1:-1], mini_batch.src[1] - 2), mini_batch.tgt[0][:, :-1]
-            p_hat_x, p_hat_y = None, None
+            x_hat_lm, y_hat_lm = None, None
             # |x| = (batch_size, n)
             # |y| = (batch_size, m)
             y_hat = engine.models[X2Y](x, y)
@@ -151,8 +152,8 @@ class DualSupervisedTrainingEngine(Engine):
             
             if engine.state.epoch > engine.config.dsl_n_warmup_epochs:
                 with torch.no_grad():
-                    p_hat_y = engine.language_models[X2Y](y)
-                    # |p_hat_y| = |y_hat|
+                    y_hat_lm = engine.language_models[X2Y](y)
+                    # |y_hat_lm| = |y_hat|
 
             #Y2X
             # Since encoder in seq2seq takes packed_sequence instance,
@@ -169,15 +170,15 @@ class DualSupervisedTrainingEngine(Engine):
 
             if engine.state.epoch > engine.config.dsl_n_warmup_epochs:
                 with torch.no_grad():
-                    p_hat_x = engine.language_models[Y2X](x).index_select(dim=0, index=restore_indice)
-                    # |p_hat_x| = |x_hat|
+                    x_hat_lm = engine.language_models[Y2X](x).index_select(dim=0, index=restore_indice)
+                    # |x_hat_lm| = |x_hat|
 
             x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
             loss_x2y, loss_y2x, dual_loss = DualSupervisedTrainingEngine._get_loss(
                 x, y,
                 x_hat, y_hat,
                 engine.crits,
-                p_hat_x, p_hat_y,
+                x_hat_lm, y_hat_lm,
                 # According to the paper, DSL should be warm-started.
                 # Thus, we turn-off the regularization at the beginning.
                 lagrange=engine.config.dsl_lambda if engine.state.epoch > engine.config.dsl_n_warmup_epochs else .0
@@ -199,7 +200,8 @@ class DualSupervisedTrainingEngine(Engine):
         g_norm = float(get_grad_norm(list(engine.models[X2Y].parameters()) +
                                      list(engine.models[Y2X].parameters())))
 
-        if engine.state.iteration % engine.config.iteration_per_update == 0:
+        if engine.state.iteration % engine.config.iteration_per_update == 0 and \
+            engine.state.iteration > 0:
             for model, optimizer, scaler in zip(engine.models,
                                                 engine.optimizers,
                                                 engine.scalers):
@@ -299,7 +301,7 @@ class DualSupervisedTrainingEngine(Engine):
                 avg_y2x = engine.state.metrics['y2x']
                 avg_reg = engine.state.metrics['reg']
 
-                print('Epoch {} - |param|={:.2e} |g_param|={:.2e} loss_x2y={:.4e} ppl_x2y={:.2f} loss_y2x={:.4e} ppl_y2x={:.2f} dual_loss={:.4e}'.format(
+                print('Epoch {} - |param|={:.2e} |g_param|={:.2e} log_p_y_given_x={:.4e} ppl_x2y={:.2f} log_p_x_given_y={:.4e} ppl_y2x={:.2f} dual_loss={:.4e}'.format(
                     engine.state.epoch,
                     avg_p_norm,
                     avg_g_norm,
