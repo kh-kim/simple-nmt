@@ -50,6 +50,11 @@ def define_argparser(is_continue=False):
         default=-1,
         help='GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=%(default)s'
     )
+    p.add_argument(
+        '--off_autocast',
+        action='store_true',
+        help='Turn-off Automatic Mixed Precision (AMP), which speed-up training.',
+    )
 
     p.add_argument(
         '--batch_size',

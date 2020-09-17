@@ -141,7 +141,7 @@ class DualSupervisedTrainingEngine(Engine):
         mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1].to(device))
         mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1].to(device))
         
-        with autocast():
+        with autocast(not engine.config.off_autocast):
             # X2Y
             x, y = (mini_batch.src[0][:, 1:-1], mini_batch.src[1] - 2), mini_batch.tgt[0][:, :-1]
             x_hat_lm, y_hat_lm = None, None
@@ -190,7 +190,7 @@ class DualSupervisedTrainingEngine(Engine):
             ]
 
         for scaler, backward_target in zip(engine.scalers, backward_targets):
-            if engine.config.gpu_id >= 0:
+            if engine.config.gpu_id >= 0 and not engine.config.off_autocast:
                 scaler.scale(backward_target).backward()
             else:
                 backward_target.backward()
@@ -210,7 +210,7 @@ class DualSupervisedTrainingEngine(Engine):
                     engine.config.max_grad_norm,
                 )
                 # Take a step of gradient descent.
-                if engine.config.gpu_id >= 0:
+                if engine.config.gpu_id >= 0 and not engine.config.off_autocast:
                     # Use scaler instead of engine.optimizer.step()
                     scaler.step(optimizer)
                     scaler.update()
@@ -235,7 +235,7 @@ class DualSupervisedTrainingEngine(Engine):
             mini_batch.src = (mini_batch.src[0].to(device), mini_batch.src[1].to(device))
             mini_batch.tgt = (mini_batch.tgt[0].to(device), mini_batch.tgt[1].to(device))
 
-            with autocast():
+            with autocast(not engine.config.off_autocast):
                 # X2Y
                 x, y = (mini_batch.src[0][:, 1:-1], mini_batch.src[1] - 2), mini_batch.tgt[0][:, :-1]
                 # |x| = (batch_size, n)
