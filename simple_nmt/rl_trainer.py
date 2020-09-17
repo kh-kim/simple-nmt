@@ -1,5 +1,6 @@
-# from nltk.translate.bleu_score import sentence_bleu as score_func
-from nltk.translate.gleu_score import sentence_gleu as score_func
+from nltk.translate.gleu_score import sentence_gleu
+from nltk.translate.bleu_score import sentence_bleu
+from nltk.translate.bleu_score import SmoothingFunction
 
 import numpy as np
 
@@ -27,10 +28,23 @@ VERBOSE_BATCH_WISE = 2
 class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
     @staticmethod
-    def _get_reward(y_hat, y, n_gram=6):
+    def _get_reward(y_hat, y, n_gram=6, method='glue'):
         # This method gets the reward based on the sampling result and reference sentence.
         # For now, we uses GLEU in NLTK, but you can used your own well-defined reward function.
         # In addition, GLEU is variation of BLEU, and it is more fit to reinforcement learning.
+        sf = SmoothingFunction()
+        score_func = {
+            'glue':  lambda ref, hyp: sentence_gleu([ref], hyp, max_len=n_gram),
+            'blue1': lambda ref, hyp: sentence_bleu([ref], hyp,
+                                                    weights=[1./n_gram] * n_gram,
+                                                    smoothing_function=sf.method1),
+            'blue2': lambda ref, hyp: sentence_bleu([ref], hyp,
+                                                    weights=[1./n_gram] * n_gram,
+                                                    smoothing_function=sf.method2),
+            'blue4': lambda ref, hyp: sentence_bleu([ref], hyp,
+                                                    weights=[1./n_gram] * n_gram,
+                                                    smoothing_function=sf.method4),
+        }[method]
 
         # Since we don't calculate reward score exactly as same as multi-bleu.perl,
         # (especialy we do have different tokenization,) I recommend to set n_gram to 6.
@@ -42,8 +56,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
             scores = []
 
             for b in range(y.size(0)):
-                ref = []
-                hyp = []
+                ref, hyp = [], []
                 for t in range(y.size(-1)):
                     ref += [str(int(y[b, t]))]
                     if y[b, t] == data_loader.EOS:
@@ -57,8 +70,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                 # ref = y[b].masked_select(y[b] != data_loader.PAD).tolist()
                 # hyp = y_hat[b].masked_select(y_hat[b] != data_loader.PAD).tolist()
 
-                # for nltk.bleu & nltk.gleu
-                scores += [score_func([ref], hyp, max_len=n_gram) * 100.]
+                scores += [score_func(ref, hyp) * 100.]
             scores = torch.FloatTensor(scores).to(y.device)
             # |scores| = (batch_size)
 
