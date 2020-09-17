@@ -191,6 +191,12 @@ def define_argparser(is_continue=False):
         default=6,
         help='Maximum number of tokens to calculate BLEU for reinforcement learning. Default=%(default)s'
     )
+    p.add_argument(
+        '--rl_reward',
+        type=str,
+        default='gleu',
+        help='Method name to use as reward function for RL training. Default=%(default)s'
+    )
 
     p.add_argument(
         '--use_transformer',

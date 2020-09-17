@@ -145,7 +145,8 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
             actor_reward = MinimumRiskTrainingEngine._get_reward(
                 indice,
                 y,
-                n_gram=engine.config.rl_n_gram
+                n_gram=engine.config.rl_n_gram,
+                method=engine.config.rl_reward,
             )
             # |y_hat| = (batch_size, length, output_size)
             # |indice| = (batch_size, length)
@@ -166,6 +167,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                         sampled_indice,
                         y,
                         n_gram=engine.config.rl_n_gram,
+                        method=engine.config.rl_reward,
                     )
                 ]
 
@@ -232,6 +234,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                 indice,
                 y,
                 n_gram=engine.config.rl_n_gram,
+                method=engine.config.rl_reward,
             )
 
         return {
