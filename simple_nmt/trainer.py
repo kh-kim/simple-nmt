@@ -92,9 +92,6 @@ class MaximumLikelihoodEstimationEngine(Engine):
             else:
                 engine.optimizer.step()
 
-            if engine.config.use_noam_decay and engine.lr_scheduler is not None:
-                engine.lr_scheduler.step()
-
         loss = float(loss / word_count)
         ppl = np.exp(loss)
 
@@ -274,7 +271,7 @@ class SingleTrainer():
         def run_validation(engine, validation_engine, valid_loader):
             validation_engine.run(valid_loader, max_epochs=1)
 
-            if engine.lr_scheduler is not None and not engine.config.use_noam_decay:
+            if engine.lr_scheduler is not None:
                 engine.lr_scheduler.step()
 
         train_engine.add_event_handler(
