@@ -5,8 +5,6 @@ import torch
 from torch import optim
 import torch.nn as nn
 
-import torch_optimizer as custom_optim
-
 from simple_nmt.data_loader import DataLoader
 import simple_nmt.data_loader as data_loader
 
@@ -297,8 +295,8 @@ def main(config, model_weight=None, opt_weight=None):
 
     if config.use_transformer:
         optimizers = [
-            custom_optim.RAdam(models[0].parameters(), lr=1e-3),
-            custom_optim.RAdam(models[1].parameters(), lr=1e-3),
+            optim.Adam(models[0].parameters(), betas=(.9, .98)),
+            optim.Adam(models[1].parameters(), betas=(.9, .98)),
         ]
     else:
         optimizers = [
