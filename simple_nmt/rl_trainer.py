@@ -8,8 +8,6 @@ import torch
 from torch import optim
 from torch.nn import functional as F
 import torch.nn.utils as torch_utils
-# from torch.cuda.amp import autocast
-# from torch.cuda.amp import GradScaler
 
 from ignite.engine import Engine
 from ignite.engine import Events
@@ -78,10 +76,10 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
 
     @staticmethod
-    def _get_loss(y_hat, indice, risk=1):
+    def _get_loss(y_hat, indice, reward=1):
         # |indice| = (batch_size, length)
         # |y_hat| = (batch_size, length, output_size)
-        # |risk| = (batch_size,)
+        # |reward| = (batch_size,)
         batch_size = indice.size(0)
         output_size = y_hat.size(-1)
 
@@ -106,7 +104,11 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
             reduction='none'
         ).view(batch_size, -1).sum(dim=-1)
 
-        loss = (log_prob * risk).sum()
+        loss = (log_prob * -reward).sum()
+        # Following two equations are eventually same.
+        # \theta = \theta - risk * \nabla_\theta \log{P}
+        # \theta = \theta - -reward * \nabla_\theta \log{P}
+        # where risk = -reward.
 
         return loss
 
@@ -172,14 +174,14 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
             # Now, we have relatively expected cumulative reward.
             # Which score can be drawn from actor_reward subtracted by baseline.
-            risk = (-actor_reward) - (-baseline)
-            # |risk| = (batch_size)
+            reward = actor_reward - baseline
+            # |reward| = (batch_size)
 
         # calculate gradients with back-propagation
         loss = MinimumRiskTrainingEngine._get_loss(
             y_hat,
             indice,
-            risk=risk
+            reward=reward
         )
         backward_target = loss.div(y.size(0)).div(engine.config.iteration_per_update)
         backward_target.backward()
@@ -200,7 +202,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         return {
             'actor': float(actor_reward.mean()),
             'baseline': float(baseline.mean()),
-            'risk': float(risk.mean()),
+            'reward': float(reward.mean()),
             '|param|': p_norm if not np.isnan(p_norm) and not np.isinf(p_norm) else 0.,
             '|g_param|': g_norm if not np.isnan(g_norm) and not np.isinf(g_norm) else 0.,
         }
@@ -240,7 +242,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
     def attach(
         train_engine,
         validation_engine,
-        training_metric_names = ['actor', 'baseline', 'risk', '|param|', '|g_param|'],
+        training_metric_names = ['actor', 'baseline', 'reward', '|param|', '|g_param|'],
         validation_metric_names = ['BLEU', ],
         verbose=VERBOSE_BATCH_WISE
     ):
