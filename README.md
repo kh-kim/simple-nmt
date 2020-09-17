@@ -28,44 +28,32 @@ I recommend to use corpora from [AI-Hub](http://www.aihub.or.kr/), if you are tr
 
 ```bash
 $ python train.py -h
-usage: train.py [-h] --model_fn MODEL_FN --train TRAIN --valid VALID --lang
-                LANG [--gpu_id GPU_ID] [--batch_size BATCH_SIZE]
-                [--n_epochs N_EPOCHS] [--verbose VERBOSE]
-                [--init_epoch INIT_EPOCH] [--max_length MAX_LENGTH]
-                [--dropout DROPOUT] [--word_vec_size WORD_VEC_SIZE]
-                [--hidden_size HIDDEN_SIZE] [--n_layers N_LAYERS]
-                [--max_grad_norm MAX_GRAD_NORM]
-                [--iteration_per_update ITERATION_PER_UPDATE] [--lr LR]
-                [--lr_step LR_STEP] [--lr_gamma LR_GAMMA]
-                [--lr_decay_start LR_DECAY_START] [--use_radam] [--use_adam]
-                [--use_noam_decay] [--lr_warmup_ratio LR_WARMUP_RATIO]
-                [--rl_lr RL_LR] [--rl_n_samples RL_N_SAMPLES]
-                [--rl_n_epochs RL_N_EPOCHS] [--rl_n_gram RL_N_GRAM]
-                [--use_transformer] [--n_splits N_SPLITS]
+usage: train.py [-h] --model_fn MODEL_FN --train TRAIN --valid VALID --lang LANG [--gpu_id GPU_ID]
+                [--off_autocast] [--batch_size BATCH_SIZE] [--n_epochs N_EPOCHS] [--verbose VERBOSE]
+                [--init_epoch INIT_EPOCH] [--max_length MAX_LENGTH] [--dropout DROPOUT]
+                [--word_vec_size WORD_VEC_SIZE] [--hidden_size HIDDEN_SIZE] [--n_layers N_LAYERS]
+                [--max_grad_norm MAX_GRAD_NORM] [--iteration_per_update ITERATION_PER_UPDATE] [--lr LR]
+                [--lr_step LR_STEP] [--lr_gamma LR_GAMMA] [--lr_decay_start LR_DECAY_START] [--use_radam]
+                [--use_adam] [--rl_lr RL_LR] [--rl_n_samples RL_N_SAMPLES] [--rl_n_epochs RL_N_EPOCHS]
+                [--rl_n_gram RL_N_GRAM] [--rl_reward RL_REWARD] [--use_transformer] [--n_splits N_SPLITS]
 
 optional arguments:
   -h, --help            show this help message and exit
-  --model_fn MODEL_FN   Model file name to save. Additional information would
-                        be annotated to the file name.
-  --train TRAIN         Training set file name except the extention. (ex:
-                        train.en --> train)
-  --valid VALID         Validation set file name except the extention. (ex:
-                        valid.en --> valid)
-  --lang LANG           Set of extention represents language pair. (ex: en +
-                        ko --> enko)
-  --gpu_id GPU_ID       GPU ID to train. Currently, GPU parallel is not
-                        supported. -1 for CPU. Default=-1
+  --model_fn MODEL_FN   Model file name to save. Additional information would be annotated to the file name.
+  --train TRAIN         Training set file name except the extention. (ex: train.en --> train)
+  --valid VALID         Validation set file name except the extention. (ex: valid.en --> valid)
+  --lang LANG           Set of extention represents language pair. (ex: en + ko --> enko)
+  --gpu_id GPU_ID       GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=-1
+  --off_autocast        Turn-off Automatic Mixed Precision (AMP), which speed-up training.
   --batch_size BATCH_SIZE
                         Mini batch size for gradient descent. Default=32
   --n_epochs N_EPOCHS   Number of epochs to train. Default=20
-  --verbose VERBOSE     VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE
-                        = 0, 1, 2. Default=2
+  --verbose VERBOSE     VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2. Default=2
   --init_epoch INIT_EPOCH
-                        Set initial epoch number, which can be useful in
-                        continue training. Default=1
+                        Set initial epoch number, which can be useful in continue training. Default=1
   --max_length MAX_LENGTH
                         Maximum length of the training sequence. Default=100
-  --dropout DROPOUT     Dropout rate. Default=0.3
+  --dropout DROPOUT     Dropout rate. Default=0.2
   --word_vec_size WORD_VEC_SIZE
                         Word embedding vector dimension. Default=512
   --hidden_size HIDDEN_SIZE
@@ -74,35 +62,25 @@ optional arguments:
   --max_grad_norm MAX_GRAD_NORM
                         Threshold for gradient clipping. Default=5.0
   --iteration_per_update ITERATION_PER_UPDATE
-                        Number of feed-forward iterations for one parameter
-                        update. Default=1
+                        Number of feed-forward iterations for one parameter update. Default=1
   --lr LR               Initial learning rate. Default=1.0
-  --lr_step LR_STEP     Number of epochs for each learning rate decay.
-                        Default=1
+  --lr_step LR_STEP     Number of epochs for each learning rate decay. Default=1
   --lr_gamma LR_GAMMA   Learning rate decay rate. Default=0.5
   --lr_decay_start LR_DECAY_START
                         Learning rate decay start at. Default=10
-  --use_radam           Use rectified Adam as optimizer. Other lr arguments
-                        should be changed.
-  --use_adam            Use Adam as optimizer instead of SGD. Other lr
-                        arguments should be changed.
-  --use_noam_decay      Use Noam learning rate decay, which is described in
-                        "Attention is All You Need" paper.
-  --lr_warmup_ratio LR_WARMUP_RATIO
-                        Ratio of warming up steps from total iterations for
-                        Noam learning rate decay. Default=0.05
+  --use_radam           Use rectified Adam as optimizer. Other lr arguments should be changed.
+  --use_adam            Use Adam as optimizer instead of SGD. Other lr arguments should be changed.
   --rl_lr RL_LR         Learning rate for reinforcement learning. Default=0.01
   --rl_n_samples RL_N_SAMPLES
                         Number of samples to get baseline. Default=1
   --rl_n_epochs RL_N_EPOCHS
-                        Number of epochs for reinforcement learning.
-                        Default=10
+                        Number of epochs for reinforcement learning. Default=10
   --rl_n_gram RL_N_GRAM
-                        Maximum number of tokens to calculate BLEU for
-                        reinforcement learning. Default=6
+                        Maximum number of tokens to calculate BLEU for reinforcement learning. Default=6
+  --rl_reward RL_REWARD
+                        Method name to use as reward function for RL training. Default=gleu
   --use_transformer     Set model architecture as Transformer.
-  --n_splits N_SPLITS   Number of heads in multi-head attention in
-                        Transformer. Default=8
+  --n_splits N_SPLITS   Number of heads in multi-head attention in Transformer. Default=8
 ```
 
 example usage:
@@ -110,31 +88,45 @@ example usage:
 #### Seq2Seq
 
 ```bash
-$ python train.py --model_fn ./models/enko.pth --train ./data/corpus.train --valid ./data/corpus.valid --lang enko --gpu_id 0  --batch_size 64 --n_epochs 15 --dropout .2 --word_vec_size 512 --hidden_size 768 --n_layers 4 --lr 1. --lr_step 1 --lr_gamma .5 --lr_decay_start 10 --rl_n_epochs 10
+$ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko --gpu_id 0 --batch_size 128 --n_epochs 30 --max_length 100 --dropout .2 --word_vec_size 512 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 2 --lr 1e-3 --lr_step 0 --use_adam --rl_n_epochs 0 --model_fn ./model.pth
+```
+
+#### To continue with RL training
+
+```bash
+$ python continue_train.py --load_fn ./model.pth --model_fn ./model.rl.pth --init_epoch 31 --iteration_per_update 1 --max_grad_norm 5
 ```
 
 #### Transformer
 
-Using Noam learning rate decay for training:
-
 ```bash
-$ python train.py --model_fn ./models/enko.pth --train ./data/corpus.train --valid ./data/corpus.valid --lang enko --gpu_id 0 --batch_size 32 --n_epochs 20 --hidden_size 1024 --n_layers 6 --use_adam --lr 1e-4 --lr_step 0 --rl_n_epochs 0 --iteration_per_update 50 --max_grad_norm 1e+4 --use_noam_decay --use_transformer --max_length 64 --lr_warmup_ratio .2
+$ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko --gpu_id 0 --batch_size 128 --n_epochs 30 --max_length 100 --dropout .2 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 32 --lr 1e-3 --lr_step 0 --use_adam --use_transformer --rl_n_epochs 0 --model_fn ./model.pth
 ```
 
-You may need to change the argument parameters.
+#### Dual Supervised Learning
+
+LM Training:
+```bash
+$
+```
+
+DSL using pretrained LM:
+```bash
+$
+```
 
 ### Inference
 
 ```bash
 $ python translate.py -h
-usage: translate.py [-h] --model MODEL [--gpu_id GPU_ID]
+usage: translate.py [-h] --model_fn MODEL_FN [--gpu_id GPU_ID]
                     [--batch_size BATCH_SIZE] [--max_length MAX_LENGTH]
                     [--n_best N_BEST] [--beam_size BEAM_SIZE] [--lang LANG]
                     [--length_penalty LENGTH_PENALTY]
 
 optional arguments:
   -h, --help            show this help message and exit
-  --model MODEL         Model file name to use
+  --model_fn MODEL_FN   Model file name to use
   --gpu_id GPU_ID       GPU ID to use. -1 for CPU. Default=-1
   --batch_size BATCH_SIZE
                         Mini batch size for parallel inference. Default=128
@@ -152,7 +144,7 @@ optional arguments:
 example usage:
 
 ```bash
-$ python translate.py --model ./model/enko.12.1.18-3.24.1.37-3.92.pth --gpu_id -1 --batch_size 128 --beam_size 8 < test.txt > test.result.txt
+$ python translate.py --model_fn ./model.pth --gpu_id 0 --lang enko < test.txt > test.result.txt
 ```
 
 You may also need to change the argument parameters.
@@ -204,14 +196,6 @@ Below table shows that result from both MLE and MRT in Korean-English translatio
 |젊은이들을 물리학에 대해 흥미를 붙일수 있게 할수 있는 가장 좋은 사람은 졸업생 물리학자이다.|The best possible person to excite young people about physics is a graduate physicist.|The best person to be able to make young people interested in physics is a self-thomac physicist.|The best person to make young people interested in physics is a graduate physicist.|
 |5월 20일, 인도는 팔로디 마을에서 충격적인 기온인 섭씨 51도를 달성하며, 가장 더운 날씨를 기록했습니다.|On May 20, India recorded its hottest day ever in the town of Phalodi with a staggering temperature of 51 degrees Celsius.|On May 20, India achieved its hottest temperatures, even 51 degrees Celsius, in the Palrody village, and recorded the hottest weather.|On May 20, India achieved 51 degrees Celsius, a devastating temperature in Paldydy town, and recorded the hottest weather.|
 |내말은, 가끔 바나는 그냥 바나나야.|I mean, sometimes a banana is just a banana.|I mean, sometimes a banana is just a banana.|I mean, sometimes a banana is just a banana.|
-
-## Author
-
-|Name|Kim, Ki Hyun|
-|-|-|
-|email|pointzz.ki@gmail.com|
-|github|https://github.com/kh-kim/|
-|linkedin|https://www.linkedin.com/in/ki-hyun-kim/|
 
 ## References
 
