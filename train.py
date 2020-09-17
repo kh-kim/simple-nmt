@@ -5,7 +5,6 @@ import torch
 from torch import optim
 import torch.nn as nn
 
-from transformers import get_linear_schedule_with_warmup
 import torch_optimizer as custom_optim
 
 from simple_nmt.data_loader import DataLoader
@@ -55,6 +54,11 @@ def define_argparser(is_continue=False):
         type=int,
         default=-1,
         help='GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=%(default)s'
+    )
+    p.add_argument(
+        '--off_autocast',
+        action='store_true',
+        help='Turn-off Automatic Mixed Precision (AMP), which speed-up training.',
     )
 
     p.add_argument(
@@ -157,22 +161,10 @@ def define_argparser(is_continue=False):
         action='store_true',
         help='Use rectified Adam as optimizer. Other lr arguments should be changed.',
     )
-
     p.add_argument(
         '--use_adam',
         action='store_true',
         help='Use Adam as optimizer instead of SGD. Other lr arguments should be changed.',
-    )
-    p.add_argument(
-        '--use_noam_decay',
-        action='store_true',
-        help='Use Noam learning rate decay, which is described in "Attention is All You Need" paper.',
-    )
-    p.add_argument(
-        '--lr_warmup_ratio',
-        type=float,
-        default=.05,
-        help='Ratio of warming up steps from total iterations for Noam learning rate decay. Default=%(default)s',
     )
 
     p.add_argument(
@@ -198,6 +190,12 @@ def define_argparser(is_continue=False):
         type=int,
         default=6,
         help='Maximum number of tokens to calculate BLEU for reinforcement learning. Default=%(default)s'
+    )
+    p.add_argument(
+        '--rl_reward',
+        type=str,
+        default='gleu',
+        help='Method name to use as reward function for RL training. Default=%(default)s'
     )
 
     p.add_argument(
@@ -259,27 +257,10 @@ def get_crit(output_size, pad_index):
 def get_optimizer(model, config):
     if config.use_adam:
         if config.use_transformer:
-            no_decay = ['bias', 'LayerNorm.weight']
-            optimizer_grouped_parameters = [
-                {
-                    'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-                    'weight_decay': 0.01
-                },
-                {
-                    'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-                    'weight_decay': 0.0
-                }
-            ]
-
-            optimizer = optim.AdamW(
-                optimizer_grouped_parameters,
-                lr=config.lr,
-            )
+            optimizer = optim.Adam(model.parameters(), lr=config.lr, betas=(.9, .98))
         else: # case of rnn based seq2seq.
             optimizer = optim.Adam(model.parameters(), lr=config.lr)
     elif config.use_radam:
-        assert not config.use_noam_decay, "You need to turn-off noam decay, when you use RAdam."
-
         optimizer = custom_optim.RAdam(model.parameters(), lr=config.lr)
     else:
         optimizer = optim.SGD(model.parameters(), lr=config.lr)
@@ -288,33 +269,19 @@ def get_optimizer(model, config):
 
 
 def get_scheduler(optimizer, n_minibatchs, config):
-    if config.use_noam_decay:
-        assert config.use_adam, "You need to set Adam as your optimizer."
-
-        n_total_iterations = n_minibatchs * config.n_epochs / config.iteration_per_update
-        n_warmup_steps = int(n_total_iterations * config.lr_warmup_ratio)
-        last_epoch = n_minibatchs * (config.init_epoch - 1) / config.iteration_per_update
-
-        lr_scheduler = get_linear_schedule_with_warmup(
+    if config.lr_step > 0:
+        lr_scheduler = optim.lr_scheduler.MultiStepLR(
             optimizer,
-            n_warmup_steps,
-            n_total_iterations,
-            last_epoch=last_epoch if config.init_epoch > 1 else -1,
+            milestones=[i for i in range(
+                max(0, config.lr_decay_start - 1),
+                (config.init_epoch - 1) + config.n_epochs,
+                config.lr_step
+            )],
+            gamma=config.lr_gamma,
+            last_epoch=config.init_epoch - 1 if config.init_epoch > 1 else -1,
         )
     else:
-        if config.lr_step > 0:
-            lr_scheduler = optim.lr_scheduler.MultiStepLR(
-                optimizer,
-                milestones=[i for i in range(
-                    max(0, config.lr_decay_start - 1),
-                    (config.init_epoch - 1) + config.n_epochs,
-                    config.lr_step
-                )],
-                gamma=config.lr_gamma,
-                last_epoch=config.init_epoch - 1 if config.init_epoch > 1 else -1,
-            )
-        else:
-            lr_scheduler = None
+        lr_scheduler = None
 
     return lr_scheduler
 

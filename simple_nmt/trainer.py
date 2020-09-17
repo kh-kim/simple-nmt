@@ -34,6 +34,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
         self.scaler = GradScaler()
 
     @staticmethod
+    #@profile
     def train(engine, mini_batch):
         # You have to reset the gradients of all model parameters
         # before to take another step in gradient descent.
@@ -54,7 +55,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
         # |x| = (batch_size, length)
         # |y| = (batch_size, length)
 
-        with autocast():
+        with autocast(not engine.config.off_autocast):
             # Take feed-forward
             # Similar as before, the input of decoder does not have EOS token.
             # Thus, remove EOS token for decoder input.
@@ -67,7 +68,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
             )
             backward_target = loss.div(y.size(0)).div(engine.config.iteration_per_update)
 
-        if engine.config.gpu_id >= 0:
+        if engine.config.gpu_id >= 0 and not engine.config.off_autocast:
             engine.scaler.scale(backward_target).backward()
         else:
             backward_target.backward()
@@ -84,15 +85,12 @@ class MaximumLikelihoodEstimationEngine(Engine):
                 engine.config.max_grad_norm,
             )
             # Take a step of gradient descent.
-            if engine.config.gpu_id >= 0:
+            if engine.config.gpu_id >= 0 and not engine.config.off_autocast:
                 # Use scaler instead of engine.optimizer.step() if using GPU.
                 engine.scaler.step(engine.optimizer)
                 engine.scaler.update()
             else:
                 engine.optimizer.step()
-
-            if engine.config.use_noam_decay and engine.lr_scheduler is not None:
-                engine.lr_scheduler.step()
 
         loss = float(loss / word_count)
         ppl = np.exp(loss)
@@ -117,7 +115,7 @@ class MaximumLikelihoodEstimationEngine(Engine):
             # |x| = (batch_size, length)
             # |y| = (batch_size, length)
 
-            with autocast():
+            with autocast(not engine.config.off_autocast):
                 y_hat = engine.model(x, mini_batch.tgt[0][:, :-1])
                 # |y_hat| = (batch_size, n_classes)
                 loss = engine.crit(
@@ -273,7 +271,7 @@ class SingleTrainer():
         def run_validation(engine, validation_engine, valid_loader):
             validation_engine.run(valid_loader, max_epochs=1)
 
-            if engine.lr_scheduler is not None and not engine.config.use_noam_decay:
+            if engine.lr_scheduler is not None:
                 engine.lr_scheduler.step()
 
         train_engine.add_event_handler(

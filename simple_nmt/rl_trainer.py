@@ -1,5 +1,6 @@
-# from nltk.translate.bleu_score import sentence_bleu as score_func
-from nltk.translate.gleu_score import sentence_gleu as score_func
+from nltk.translate.gleu_score import sentence_gleu
+from nltk.translate.bleu_score import sentence_bleu
+from nltk.translate.bleu_score import SmoothingFunction
 
 import numpy as np
 
@@ -7,8 +8,6 @@ import torch
 from torch import optim
 from torch.nn import functional as F
 import torch.nn.utils as torch_utils
-# from torch.cuda.amp import autocast
-# from torch.cuda.amp import GradScaler
 
 from ignite.engine import Engine
 from ignite.engine import Events
@@ -27,10 +26,23 @@ VERBOSE_BATCH_WISE = 2
 class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
     @staticmethod
-    def _get_reward(y_hat, y, n_gram=6):
+    def _get_reward(y_hat, y, n_gram=6, method='glue'):
         # This method gets the reward based on the sampling result and reference sentence.
         # For now, we uses GLEU in NLTK, but you can used your own well-defined reward function.
         # In addition, GLEU is variation of BLEU, and it is more fit to reinforcement learning.
+        sf = SmoothingFunction()
+        score_func = {
+            'glue':  lambda ref, hyp: sentence_gleu([ref], hyp, max_len=n_gram),
+            'blue1': lambda ref, hyp: sentence_bleu([ref], hyp,
+                                                    weights=[1./n_gram] * n_gram,
+                                                    smoothing_function=sf.method1),
+            'blue2': lambda ref, hyp: sentence_bleu([ref], hyp,
+                                                    weights=[1./n_gram] * n_gram,
+                                                    smoothing_function=sf.method2),
+            'blue4': lambda ref, hyp: sentence_bleu([ref], hyp,
+                                                    weights=[1./n_gram] * n_gram,
+                                                    smoothing_function=sf.method4),
+        }[method]
 
         # Since we don't calculate reward score exactly as same as multi-bleu.perl,
         # (especialy we do have different tokenization,) I recommend to set n_gram to 6.
@@ -42,8 +54,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
             scores = []
 
             for b in range(y.size(0)):
-                ref = []
-                hyp = []
+                ref, hyp = [], []
                 for t in range(y.size(-1)):
                     ref += [str(int(y[b, t]))]
                     if y[b, t] == data_loader.EOS:
@@ -57,8 +68,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                 # ref = y[b].masked_select(y[b] != data_loader.PAD).tolist()
                 # hyp = y_hat[b].masked_select(y_hat[b] != data_loader.PAD).tolist()
 
-                # for nltk.bleu & nltk.gleu
-                scores += [score_func([ref], hyp, max_len=n_gram) * 100.]
+                scores += [score_func(ref, hyp) * 100.]
             scores = torch.FloatTensor(scores).to(y.device)
             # |scores| = (batch_size)
 
@@ -66,10 +76,10 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
 
     @staticmethod
-    def _get_loss(y_hat, indice, risk=1):
+    def _get_loss(y_hat, indice, reward=1):
         # |indice| = (batch_size, length)
         # |y_hat| = (batch_size, length, output_size)
-        # |risk| = (batch_size,)
+        # |reward| = (batch_size,)
         batch_size = indice.size(0)
         output_size = y_hat.size(-1)
 
@@ -94,7 +104,11 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
             reduction='none'
         ).view(batch_size, -1).sum(dim=-1)
 
-        loss = (log_prob * risk).sum()
+        loss = (log_prob * -reward).sum()
+        # Following two equations are eventually same.
+        # \theta = \theta - risk * \nabla_\theta \log{P}
+        # \theta = \theta - -reward * \nabla_\theta \log{P}
+        # where risk = -reward.
 
         return loss
 
@@ -131,7 +145,8 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
             actor_reward = MinimumRiskTrainingEngine._get_reward(
                 indice,
                 y,
-                n_gram=engine.config.rl_n_gram
+                n_gram=engine.config.rl_n_gram,
+                method=engine.config.rl_reward,
             )
             # |y_hat| = (batch_size, length, output_size)
             # |indice| = (batch_size, length)
@@ -152,6 +167,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                         sampled_indice,
                         y,
                         n_gram=engine.config.rl_n_gram,
+                        method=engine.config.rl_reward,
                     )
                 ]
 
@@ -160,14 +176,14 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
             # Now, we have relatively expected cumulative reward.
             # Which score can be drawn from actor_reward subtracted by baseline.
-            risk = (-actor_reward) - (-baseline)
-            # |risk| = (batch_size)
+            reward = actor_reward - baseline
+            # |reward| = (batch_size)
 
         # calculate gradients with back-propagation
         loss = MinimumRiskTrainingEngine._get_loss(
             y_hat,
             indice,
-            risk=risk
+            reward=reward
         )
         backward_target = loss.div(y.size(0)).div(engine.config.iteration_per_update)
         backward_target.backward()
@@ -188,7 +204,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         return {
             'actor': float(actor_reward.mean()),
             'baseline': float(baseline.mean()),
-            'risk': float(risk.mean()),
+            'reward': float(reward.mean()),
             '|param|': p_norm if not np.isnan(p_norm) and not np.isinf(p_norm) else 0.,
             '|g_param|': g_norm if not np.isnan(g_norm) and not np.isinf(g_norm) else 0.,
         }
@@ -218,6 +234,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                 indice,
                 y,
                 n_gram=engine.config.rl_n_gram,
+                method=engine.config.rl_reward,
             )
 
         return {
@@ -228,7 +245,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
     def attach(
         train_engine,
         validation_engine,
-        training_metric_names = ['actor', 'baseline', 'risk', '|param|', '|g_param|'],
+        training_metric_names = ['actor', 'baseline', 'reward', '|param|', '|g_param|'],
         validation_metric_names = ['BLEU', ],
         verbose=VERBOSE_BATCH_WISE
     ):

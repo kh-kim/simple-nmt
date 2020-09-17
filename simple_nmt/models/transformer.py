@@ -114,11 +114,20 @@ class EncoderBlock(nn.Module):
         # |x|    = (batch_size, n, hidden_size)
         # |mask| = (batch_size, n, n)
 
-        z = self.attn_norm(x + self.attn_dropout(self.attn(Q=x,
-                                                           K=x,
-                                                           V=x,
-                                                           mask=mask)))
-        z = self.fc_norm(z + self.fc_dropout(self.fc(z)))
+        # Post-LM:
+        # z = self.attn_norm(x + self.attn_dropout(self.attn(Q=x,
+        #                                                    K=x,
+        #                                                    V=x,
+        #                                                    mask=mask)))
+        # z = self.fc_norm(z + self.fc_dropout(self.fc(z)))
+
+        # Pre-LM:
+        z = self.attn_norm(x)
+        z = x + self.attn_dropout(self.attn(Q=z,
+                                            K=z,
+                                            V=z,
+                                            mask=mask))
+        z = z + self.fc_dropout(self.fc(self.fc_norm(z)))
         # |z| = (batch_size, n, hidden_size)
 
         return z, mask
@@ -162,25 +171,54 @@ class DecoderBlock(nn.Module):
             # |prev|        = None
             # |future_mask| = (batch_size, m, m)
             # |z|           = (batch_size, m, hidden_size)
-            z = self.masked_attn_norm(x + self.masked_attn_dropout(
-                self.masked_attn(x, x, x, mask=future_mask)
-            ))
+
+            # Post-LM:
+            # z = self.masked_attn_norm(x + self.masked_attn_dropout(
+            #     self.masked_attn(x, x, x, mask=future_mask)
+            # ))
+
+            # Pre-LM:
+            z = self.masked_attn_norm(x)
+            z = x + self.masked_attn_dropout(
+                self.masked_attn(z, z, z, mask=future_mask)
+            )
         else: # Inference mode
             # |x|           = (batch_size, 1, hidden_size)
             # |prev|        = (batch_size, t - 1, hidden_size)
             # |future_mask| = None
             # |z|           = (batch_size, 1, hidden_size)
-            z = self.masked_attn_norm(x + self.masked_attn_dropout(
-                self.masked_attn(x, prev, prev, mask=None)
-            ))
 
-        z = self.attn_norm(z + self.attn_dropout(self.attn(Q=z,
-                                                           K=key_and_value,
-                                                           V=key_and_value,
-                                                           mask=mask)))
+            # Post-LM:
+            # z = self.masked_attn_norm(x + self.masked_attn_dropout(
+            #     self.masked_attn(x, prev, prev, mask=None)
+            # ))
+
+            # Pre-LM:
+            normed_prev = self.masked_attn_norm(prev)
+            z = self.masked_attn_norm(x)
+            z = x + self.masked_attn_dropout(
+                self.masked_attn(z, normed_prev, normed_prev, mask=None)
+            )
+
+        # Post-LM:
+        # z = self.attn_norm(z + self.attn_dropout(self.attn(Q=z,
+        #                                                    K=key_and_value,
+        #                                                    V=key_and_value,
+        #                                                    mask=mask)))
+
+        # Pre-LM:
+        normed_key_and_value = self.attn_norm(key_and_value)
+        z = z + self.attn_dropout(self.attn(Q=self.attn_norm(z),
+                                            K=normed_key_and_value,
+                                            V=normed_key_and_value,
+                                            mask=mask))
         # |z| = (batch_size, m, hidden_size)
 
-        z = self.fc_norm(z + self.fc_dropout(self.fc(z)))
+        # Post-LM:
+        # z = self.fc_norm(z + self.fc_dropout(self.fc(z)))
+
+        # Pre-LM:
+        z = z + self.fc_dropout(self.fc(self.fc_norm(z)))
         # |z| = (batch_size, m, hidden_size)
 
         return z, key_and_value, mask, prev, future_mask
@@ -246,8 +284,11 @@ class Transformer(nn.Module):
                 use_leaky_relu,
               ) for _ in range(n_dec_blocks)],
         )
-        self.generator = nn.Linear(hidden_size, output_size)
-        self.softmax = nn.LogSoftmax(dim=-1)
+        self.generator = nn.Sequential(
+            nn.LayerNorm(hidden_size), # Only for Pre-LM Transformer.
+            nn.Linear(hidden_size, output_size),
+            nn.LogSoftmax(dim=-1),
+        )
 
     @torch.no_grad()
     def _generate_pos_enc(self, hidden_size, max_length):
@@ -328,7 +369,7 @@ class Transformer(nn.Module):
         h, _, _, _, _ = self.decoder(h, z, mask_dec, None, future_mask)
         # |h| = (batch_size, m, hidden_size)
 
-        y_hat = self.softmax(self.generator(h))
+        y_hat = self.generator(h)
         # |y_hat| = (batch_size, m, output_size)
 
         return y_hat
@@ -384,7 +425,7 @@ class Transformer(nn.Module):
                     prevs[layer_index + 1] = torch.cat([prevs[layer_index + 1], h_t], dim=1)
                 # |prev| = (batch_size, len(y_hats) + 1, hidden_size)
 
-            y_hat_t = self.softmax(self.generator(h_t))
+            y_hat_t = self.generator(h_t)
             # |y_hat_t| = (batch_size, 1, output_size)
 
             y_hats += [y_hat_t]
@@ -530,7 +571,7 @@ class Transformer(nn.Module):
                         dim=1,
                     ) # Append new hidden state for each layer.
 
-            y_hat_t = self.softmax(self.generator(h_t))
+            y_hat_t = self.generator(h_t)
             # |y_hat_t| = (batch_size, 1, output_size)
 
             # |fab_prevs[i][begin:end]| = (beam_size, length, hidden_size)

@@ -55,7 +55,7 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
         y = mini_batch.src[0][:, 1:] if engine.is_src_target else mini_batch.tgt[0][:, 1:]
         # |x| = |y| = (batch_size, length)
 
-        with autocast():
+        with autocast(not engine.config.off_autocast):
             y_hat = engine.model(x)
             # |y_hat| = (batch_size, length, output_size)
 
@@ -65,7 +65,7 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
             ).sum()
             backward_target = loss.div(y.size(0))
 
-        if engine.config.gpu_id >= 0:
+        if engine.config.gpu_id >= 0 and not engine.config.off_autocast:
             engine.scaler.scale(backward_target).backward()
         else:
             backward_target.backward()
@@ -80,7 +80,7 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
             engine.config.max_grad_norm,
         )
         # Take a step of gradient descent.
-        if engine.config.gpu_id >= 0:
+        if engine.config.gpu_id >= 0 and not engine.config.off_autocast:
             # Use scaler instead of engine.optimizer.step() if using GPU.
             engine.scaler.step(engine.optimizer)
             engine.scaler.update()
@@ -110,14 +110,15 @@ class LanguageModelTrainingEngine(MaximumLikelihoodEstimationEngine):
             y = mini_batch.src[0][:, 1:] if engine.is_src_target else mini_batch.tgt[0][:, 1:]
             # |x| = |y| = (batch_size, length)
 
-            y_hat = engine.model(x)
-            # |y_hat| = (batch_size, length, output_size)
+            with autocast(not engine.config.off_autocast):
+                y_hat = engine.model(x)
+                # |y_hat| = (batch_size, length, output_size)
 
-            loss = engine.crit(y_hat.contiguous().view(-1, y_hat.size(-1)),
-                               y.contiguous().view(-1),
-                               ).sum()
-            word_count = int(mini_batch.src[1].sum()) if engine.is_src_target else int(mini_batch.tgt[1].sum())
-
+                loss = engine.crit(y_hat.contiguous().view(-1, y_hat.size(-1)),
+                                   y.contiguous().view(-1),
+                                   ).sum()
+            
+        word_count = int(mini_batch.src[1].sum()) if engine.is_src_target else int(mini_batch.tgt[1].sum())
         loss = float(loss / word_count)
         ppl = np.exp(loss)
         
