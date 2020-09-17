@@ -14,6 +14,11 @@ def define_argparser():
         '--script_fn',
         required=True,
     )
+    p.add_argument(
+        '--gpu_id',
+        type=int,
+        default=-1,
+    )
     
     config = p.parse_args()
 
@@ -24,6 +29,6 @@ if __name__ == '__main__':
     config = define_argparser()
 
     for fn in config.model_fn:
-        cmd = "%s %s" % (config.script_fn, fn)
-        print(cmd)
+        cmd = "%s %s %d" % (config.script_fn, fn, config.gpu_id)
+        os.system('echo "%s"' % cmd)
         os.system(cmd)
