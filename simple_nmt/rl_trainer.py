@@ -26,20 +26,20 @@ VERBOSE_BATCH_WISE = 2
 class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
 
     @staticmethod
-    def _get_reward(y_hat, y, n_gram=6, method='glue'):
+    def _get_reward(y_hat, y, n_gram=6, method='gleu'):
         # This method gets the reward based on the sampling result and reference sentence.
         # For now, we uses GLEU in NLTK, but you can used your own well-defined reward function.
         # In addition, GLEU is variation of BLEU, and it is more fit to reinforcement learning.
         sf = SmoothingFunction()
         score_func = {
-            'glue':  lambda ref, hyp: sentence_gleu([ref], hyp, max_len=n_gram),
-            'blue1': lambda ref, hyp: sentence_bleu([ref], hyp,
+            'gleu':  lambda ref, hyp: sentence_gleu([ref], hyp, max_len=n_gram),
+            'bleu1': lambda ref, hyp: sentence_bleu([ref], hyp,
                                                     weights=[1./n_gram] * n_gram,
                                                     smoothing_function=sf.method1),
-            'blue2': lambda ref, hyp: sentence_bleu([ref], hyp,
+            'bleu2': lambda ref, hyp: sentence_bleu([ref], hyp,
                                                     weights=[1./n_gram] * n_gram,
                                                     smoothing_function=sf.method2),
-            'blue4': lambda ref, hyp: sentence_bleu([ref], hyp,
+            'bleu4': lambda ref, hyp: sentence_bleu([ref], hyp,
                                                     weights=[1./n_gram] * n_gram,
                                                     smoothing_function=sf.method4),
         }[method]
