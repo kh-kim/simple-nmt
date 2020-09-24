@@ -114,14 +114,14 @@ class DualSupervisedTrainingEngine(Engine):
             dual_loss = lagrange * ((log_p_x + log_p_y_given_x.detach()) - (log_p_y + log_p_x_given_y.detach()))**2
 
             # Note that 'detach()' is used to prevent unnecessary back-propagation.
-            log_p_y_given_x += lagrange * ((log_p_x + log_p_y_given_x) - (log_p_y + log_p_x_given_y.detach()))**2
-            log_p_x_given_y += lagrange * ((log_p_x + log_p_y_given_x.detach()) - (log_p_y + log_p_x_given_y))**2
+            log_p_y_given_x -= lagrange * ((log_p_x + log_p_y_given_x) - (log_p_y + log_p_x_given_y.detach()))**2
+            log_p_x_given_y -= lagrange * ((log_p_x + log_p_y_given_x.detach()) - (log_p_y + log_p_x_given_y))**2
         else:
             dual_loss = None
 
         return (
-            log_p_y_given_x.sum(),
-            log_p_x_given_y.sum(),
+            -log_p_y_given_x.sum(),
+            -log_p_x_given_y.sum(),
             float(dual_loss.sum()) if dual_loss is not None else .0,
         )
 
