@@ -16,35 +16,15 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 #### Maximum Likelihood Estimation (MLE)
 
-$$\begin{gathered}
-\mathcal{D}=\{(x_i,y_i\}_{i=1}^N \\
-\\
-\hat{\theta}\leftarrow\theta-\eta\nabla_\theta\mathcal{L}(\theta) \\
-\mathcal{L}(\theta)=-\sum_{i=1}^N{\log{P(y_i|x_i;\theta)}}
-\end{gathered}$$
+<p align="center"><img src="/tex/287076bf1e54cf080ee5e6c6d9432270.svg?invert_in_darkmode&sanitize=true" align=middle width=194.2640469pt height=129.49760504999998pt/></p>
 
 #### Minimum Risk Training (MRT)
 
-$$\begin{gathered}
-\nabla_\theta\mathcal{L}(\theta)=-\nabla_\theta\sum_{i=1}^N{}{
-    \Big(\text{reward}(y_i,\hat{y}_i)-\frac{1}{K}\sum_{k=1}^K{
-        \text{reward}(y_i,\hat{y}_{i,k})
-    }\Big)\times\log{P(\hat{y}_i|x_i;\theta)}
-}, \\
-\text{where }\hat{y}_i\sim{P(\text{y}|x_i;\theta)}.
-\end{gathered}$$
+<p align="center"><img src="/tex/e2178b9206e88ee3c33c657344023294.svg?invert_in_darkmode&sanitize=true" align=middle width=552.7717536pt height=74.31972569999999pt/></p>
 
 #### Dual Supervised Learning (DSL)
 
-$$\begin{gathered}
-\theta_{x\rightarrow{y}}\leftarrow\theta_{x\rightarrow{y}}-\eta\nabla_{\theta_{x\rightarrow{y}}}\mathcal{L}(\theta_{x\rightarrow{y}}) \\
-\mathcal{L}(\theta_{x\rightarrow{y}})=-\sum_{i=1}^N{
-    \log{P(y_i|x_i;\theta_{x\rightarrow{y}})}
-}+\bigg\|
-    \Big(\log{P(y_i|x_i;\theta_{x\rightarrow{y}})}+\log{\hat{P}(x_i)}\Big)
-    -\Big(\log{P(x_i|y_i;\theta_{y\rightarrow{x}})}+\log{\hat{P}(y_i)}\Big)
-\bigg\|_2^2
-\end{gathered}$$
+<p align="center"><img src="/tex/ca879c9675054d376d7486ef21cc5317.svg?invert_in_darkmode&sanitize=true" align=middle width=779.88238845pt height=74.2718922pt/></p>
 
 ## Pre-requisite
 
@@ -61,68 +41,7 @@ I recommend to use corpora from [AI-Hub](http://www.aihub.or.kr/), if you are tr
 ### Training
 
 ```bash
-$ python train.py -h
-usage: train.py [-h] --model_fn MODEL_FN --train TRAIN --valid VALID --lang LANG [--gpu_id GPU_ID]
-                [--off_autocast] [--batch_size BATCH_SIZE] [--n_epochs N_EPOCHS] [--verbose VERBOSE]
-                [--init_epoch INIT_EPOCH] [--max_length MAX_LENGTH] [--dropout DROPOUT]
-                [--word_vec_size WORD_VEC_SIZE] [--hidden_size HIDDEN_SIZE] [--n_layers N_LAYERS]
-                [--max_grad_norm MAX_GRAD_NORM] [--iteration_per_update ITERATION_PER_UPDATE] [--lr LR]
-                [--lr_step LR_STEP] [--lr_gamma LR_GAMMA] [--lr_decay_start LR_DECAY_START] [--use_radam]
-                [--use_adam] [--rl_lr RL_LR] [--rl_n_samples RL_N_SAMPLES] [--rl_n_epochs RL_N_EPOCHS]
-                [--rl_n_gram RL_N_GRAM] [--rl_reward RL_REWARD] [--use_transformer] [--n_splits N_SPLITS]
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --model_fn MODEL_FN   Model file name to save. Additional information would be annotated to the file name.
-  --train TRAIN         Training set file name except the extention. (ex: train.en --> train)
-  --valid VALID         Validation set file name except the extention. (ex: valid.en --> valid)
-  --lang LANG           Set of extention represents language pair. (ex: en + ko --> enko)
-  --gpu_id GPU_ID       GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=-1
-  --off_autocast        Turn-off Automatic Mixed Precision (AMP), which speed-up training.
-  --batch_size BATCH_SIZE
-                        Mini batch size for gradient descent. Default=32
-  --n_epochs N_EPOCHS   Number of epochs to train. Default=20
-  --verbose VERBOSE     VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2. Default=2
-  --init_epoch INIT_EPOCH
-                        Set initial epoch number, which can be useful in continue training. Default=1
-  --max_length MAX_LENGTH
-                        Maximum length of the training sequence. Default=100
-  --dropout DROPOUT     Dropout rate. Default=0.2
-  --word_vec_size WORD_VEC_SIZE
-                        Word embedding vector dimension. Default=512
-  --hidden_size HIDDEN_SIZE
-                        Hidden size of LSTM. Default=768
-  --n_layers N_LAYERS   Number of layers in LSTM. Default=4
-  --max_grad_norm MAX_GRAD_NORM
-                        Threshold for gradient clipping. Default=5.0
-  --iteration_per_update ITERATION_PER_UPDATE
-                        Number of feed-forward iterations for one parameter update. Default=1
-  --lr LR               Initial learning rate. Default=1.0
-  --lr_step LR_STEP     Number of epochs for each learning rate decay. Default=1
-  --lr_gamma LR_GAMMA   Learning rate decay rate. Default=0.5
-  --lr_decay_start LR_DECAY_START
-                        Learning rate decay start at. Default=10
-  --use_radam           Use rectified Adam as optimizer. Other lr arguments should be changed.
-  --use_adam            Use Adam as optimizer instead of SGD. Other lr arguments should be changed.
-  --rl_lr RL_LR         Learning rate for reinforcement learning. Default=0.01
-  --rl_n_samples RL_N_SAMPLES
-                        Number of samples to get baseline. Default=1
-  --rl_n_epochs RL_N_EPOCHS
-                        Number of epochs for reinforcement learning. Default=10
-  --rl_n_gram RL_N_GRAM
-                        Maximum number of tokens to calculate BLEU for reinforcement learning. Default=6
-  --rl_reward RL_REWARD
-                        Method name to use as reward function for RL training. Default=gleu
-  --use_transformer     Set model architecture as Transformer.
-  --n_splits N_SPLITS   Number of heads in multi-head attention in Transformer. Default=8
-```
-
-example usage:
-
-#### Seq2Seq
-
-```bash
-$ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
+<img src="/tex/488e526633f52bb82913893bfd66202f.svg?invert_in_darkmode&sanitize=true" align=middle width=1433.23214265pt height=1183.5616452pt/> python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
 --gpu_id 0 --batch_size 128 --n_epochs 30 --max_length 100 --dropout .2 \
 --word_vec_size 512 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 2 \
 --lr 1e-3 --lr_step 0 --use_adam --rl_n_epochs 0 \
@@ -132,14 +51,7 @@ $ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus
 #### To continue with RL training
 
 ```bash
-$ python continue_train.py --load_fn ./model.pth --model_fn ./model.rl.pth \
---init_epoch 31 --iteration_per_update 1 --max_grad_norm 5
-```
-
-#### Transformer
-
-```bash
-$ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
+<img src="/tex/c1ec5a3bd1265ad3b7234b82fcd34908.svg?invert_in_darkmode&sanitize=true" align=middle width=700.2745958999999pt height=118.35616320000003pt/> python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
 --gpu_id 0 --batch_size 128 --n_epochs 30 --max_length 100 --dropout .2 \
 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 32 \
 --lr 1e-3 --lr_step 0 --use_adam --use_transformer --rl_n_epochs 0 \
@@ -150,44 +62,13 @@ $ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus
 
 LM Training:
 ```bash
-$
-```
-
-DSL using pretrained LM:
-```bash
-$
+<img src="/tex/dfd468b72b7d81c4630286ce247fa3af.svg?invert_in_darkmode&sanitize=true" align=middle width=232.9229991pt height=45.84475500000001pt/>
 ```
 
 ### Inference
 
 ```bash
-$ python translate.py -h
-usage: translate.py [-h] --model_fn MODEL_FN [--gpu_id GPU_ID]
-                    [--batch_size BATCH_SIZE] [--max_length MAX_LENGTH]
-                    [--n_best N_BEST] [--beam_size BEAM_SIZE] [--lang LANG]
-                    [--length_penalty LENGTH_PENALTY]
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --model_fn MODEL_FN   Model file name to use
-  --gpu_id GPU_ID       GPU ID to use. -1 for CPU. Default=-1
-  --batch_size BATCH_SIZE
-                        Mini batch size for parallel inference. Default=128
-  --max_length MAX_LENGTH
-                        Maximum sequence length for inference. Default=255
-  --n_best N_BEST       Number of best inference result per sample. Default=1
-  --beam_size BEAM_SIZE
-                        Beam size for beam search. Default=5
-  --lang LANG           Source language and target language. Example: enko
-  --length_penalty LENGTH_PENALTY
-                        Length penalty parameter that higher value produce
-                        shorter results. Default=1.2
-```
-
-example usage:
-
-```bash
-$ python translate.py --model_fn ./model.pth --gpu_id 0 --lang enko < test.txt > test.result.txt
+<img src="/tex/99822903ed6229addc7fc49a2440b70a.svg?invert_in_darkmode&sanitize=true" align=middle width=1159.56336705pt height=394.5205473pt/> python translate.py --model_fn ./model.pth --gpu_id 0 --lang enko < test.txt > test.result.txt
 ```
 
 You may also need to change the argument parameters.
