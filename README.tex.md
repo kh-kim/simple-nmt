@@ -61,7 +61,7 @@ I recommend to use corpora from [AI-Hub](http://www.aihub.or.kr/), if you are tr
 ### Training
 
 ```bash
-$ python train.py -h
+>> python train.py -h
 usage: train.py [-h] --model_fn MODEL_FN --train TRAIN --valid VALID --lang LANG [--gpu_id GPU_ID]
                 [--off_autocast] [--batch_size BATCH_SIZE] [--n_epochs N_EPOCHS] [--verbose VERBOSE]
                 [--init_epoch INIT_EPOCH] [--max_length MAX_LENGTH] [--dropout DROPOUT]
@@ -122,7 +122,7 @@ example usage:
 #### Seq2Seq
 
 ```bash
-$ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
+>> python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
 --gpu_id 0 --batch_size 128 --n_epochs 30 --max_length 100 --dropout .2 \
 --word_vec_size 512 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 2 \
 --lr 1e-3 --lr_step 0 --use_adam --rl_n_epochs 0 \
@@ -132,14 +132,14 @@ $ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus
 #### To continue with RL training
 
 ```bash
-$ python continue_train.py --load_fn ./model.pth --model_fn ./model.rl.pth \
+>> python continue_train.py --load_fn ./model.pth --model_fn ./model.rl.pth \
 --init_epoch 31 --iteration_per_update 1 --max_grad_norm 5
 ```
 
 #### Transformer
 
 ```bash
-$ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
+>> python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
 --gpu_id 0 --batch_size 128 --n_epochs 30 --max_length 100 --dropout .2 \
 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 32 \
 --lr 1e-3 --lr_step 0 --use_adam --use_transformer --rl_n_epochs 0 \
@@ -150,18 +150,26 @@ $ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus
 
 LM Training:
 ```bash
-$
+>> python lm_train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
+--gpu_id 0 --batch_size 256 --n_epochs 20 --max_length 64 --dropout .2 \
+--word_vec_size 512 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 \
+--model_fn ./lm.pth
 ```
 
 DSL using pretrained LM:
 ```bash
-$
+>> python dual_train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
+--gpu_id 0 --batch_size 64 --n_epochs 30 --max_length 64 --dropout .2 \
+--word_vec_size 512 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 4 \
+--dsl_n_warmup_epochs 5 --dsl_lambda 1e-2 \
+--lm_fn ./lm.pth \
+--model_fn ./model.pth
 ```
 
 ### Inference
 
 ```bash
-$ python translate.py -h
+>> python translate.py -h
 usage: translate.py [-h] --model_fn MODEL_FN [--gpu_id GPU_ID]
                     [--batch_size BATCH_SIZE] [--max_length MAX_LENGTH]
                     [--n_best N_BEST] [--beam_size BEAM_SIZE] [--lang LANG]
@@ -187,7 +195,7 @@ optional arguments:
 example usage:
 
 ```bash
-$ python translate.py --model_fn ./model.pth --gpu_id 0 --lang enko < test.txt > test.result.txt
+>> python translate.py --model_fn ./model.pth --gpu_id 0 --lang enko < test.txt > test.result.txt
 ```
 
 You may also need to change the argument parameters.
