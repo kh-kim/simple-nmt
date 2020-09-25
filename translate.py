@@ -179,7 +179,7 @@ if __name__ == '__main__':
     # Load saved model.
     saved_data = torch.load(
         config.model_fn,
-        map_location='cpu' if config.gpu_id < 0 else 'cuda:%d' % config.gpu_id
+        map_location='cpu',
     )
 
     # Load configuration setting in training.
