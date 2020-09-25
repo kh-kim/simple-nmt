@@ -27,6 +27,8 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 #### Minimum Risk Training (MRT)
 
+![](https://latex.codecogs.com/svg.latex?\begin{gathered}\nabla_\theta\mathcal{L}(\theta)=-\nabla_\theta\sum_{i=1}^N{}{%20%20%20%20\Big(\text{reward}(y_i,\hat{y}_i)-\frac{1}{K}\sum_{k=1}^K{%20%20%20%20%20%20%20%20\text{reward}(y_i,\hat{y}_{i,k})%20%20%20%20}\Big)\times\log{P(\hat{y}_i|x_i;\theta)}},%20\\\text{where%20}\hat{y}_i\sim{P(\text{y}|x_i;\theta)}.\end{gathered})
+
 <!-- $$\begin{gathered}
 \nabla_\theta\mathcal{L}(\theta)=-\nabla_\theta\sum_{i=1}^N{}{
     \Big(\text{reward}(y_i,\hat{y}_i)-\frac{1}{K}\sum_{k=1}^K{
@@ -37,6 +39,8 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 \end{gathered}$$ -->
 
 #### Dual Supervised Learning (DSL)
+
+![](https://latex.codecogs.com/svg.latex?\begin{gathered}\theta_{x\rightarrow{y}}\leftarrow\theta_{x\rightarrow{y}}-\eta\nabla_{\theta_{x\rightarrow{y}}}\mathcal{L}(\theta_{x\rightarrow{y}})%20\\\mathcal{L}(\theta_{x\rightarrow{y}})=-\sum_{i=1}^N{%20%20%20%20\log{P(y_i|x_i;\theta_{x\rightarrow{y}})}}+\bigg\|%20%20%20%20\Big(\log{P(y_i|x_i;\theta_{x\rightarrow{y}})}+\log{\hat{P}(x_i)}\Big)%20%20%20%20-\Big(\log{P(x_i|y_i;\theta_{y\rightarrow{x}})}+\log{\hat{P}(y_i)}\Big)\bigg\|_2^2\end{gathered})
 
 <!-- $$\begin{gathered}
 \theta_{x\rightarrow{y}}\leftarrow\theta_{x\rightarrow{y}}-\eta\nabla_{\theta_{x\rightarrow{y}}}\mathcal{L}(\theta_{x\rightarrow{y}}) \\
