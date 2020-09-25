@@ -16,7 +16,7 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 #### Maximum Likelihood Estimation (MLE)
 
-![](http://i.upmath.me/svg/%5Cbegin%7Bgathered%7D%0A%5Cmathcal%7BD%7D%3D%5C%7B(x_i%2Cy_i%5C%7D_%7Bi%3D1%7D%5EN%20%5C%5C%0A%5C%5C%0A%5Chat%7B%5Ctheta%7D%5Cleftarrow%5Ctheta-%5Ceta%5Cnabla_%5Ctheta%5Cmathcal%7BL%7D(%5Ctheta)%20%5C%5C%0A%5Cmathcal%7BL%7D(%5Ctheta)%3D-%5Csum_%7Bi%3D1%7D%5EN%7B%5Clog%7BP(y_i%7Cx_i%3B%5Ctheta)%7D%7D%0A%5Cend%7Bgathered%7D)
+![](https://latex.codecogs.com/svg.latex?\begin{gathered}\theta_{x\rightarrow{y}}\leftarrow\theta_{x\rightarrow{y}}-\eta\nabla_{\theta_{x\rightarrow{y}}}\mathcal{L}(\theta_{x\rightarrow{y}})%20\\\mathcal{L}(\theta_{x\rightarrow{y}})=-\sum_{i=1}^N{%20%20%20%20\log{P(y_i|x_i;\theta_{x\rightarrow{y}})}}+\bigg\|%20%20%20%20\Big(\log{P(y_i|x_i;\theta_{x\rightarrow{y}})}+\log{\hat{P}(x_i)}\Big)%20%20%20%20-\Big(\log{P(x_i|y_i;\theta_{y\rightarrow{x}})}+\log{\hat{P}(y_i)}\Big)\bigg\|_2^2\end{gathered})
 
 <!-- $$\begin{gathered}
 \mathcal{D}=\{(x_i,y_i\}_{i=1}^N \\
