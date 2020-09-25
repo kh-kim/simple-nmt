@@ -227,28 +227,33 @@ Below is a table for hyper-parameters for each algorithm.
 |lr|1e-3|1e-2|1e-3|
 |max_grad_norm|1e+8|5|1e+8|
 
+Please, note that MRT has different optimization setup.
+
 ### Results
 
 Following table shows a evaluation result for each algorithm.
 
-|||koen|||enko||
-|-|-|-|-|-|-|-|
-|epoch|train BLEU|valid BLEU|real BLEU|train BLEU|valid BLEU|real BLEU|
-|18|||23.56|||28.15|
-|19|25.75|29.1943|23.43|24.6|27.7351|29.73
-|20|26.19|29.2517|24.13|25.25|27.818|29.22
-|21|26.68|29.3997|24.15|25.64|27.8878|28.77
-|22|27.12|29.4438|23.89|26.04|27.9814|29.74
-|23|27.22|29.4003|24.13|26.16|28.0581|29.03
-|24|27.26|29.477|25.09|26.19|28.0924|29.83
-|25|27.54|29.5276|25.17|26.27|28.1819|28.9
-|26|27.53|29.6685|24.64|26.37|28.171|29.45
-|27|27.78|29.618|24.65|26.63|28.241|28.87
-|28|27.73|29.7087|24.54|26.83|28.3358|29.11
+||enko|koen|
+|:-:|:-:|:-:|
+|Sequence-to-Sequence|32.53|29.67|
+|Sequence-to-Sequence (MRT)|34.04|30.89|
+|Sequence-to-Sequence (DSL)|-|-|
+|Transformer|34.96|31.84|
+|Transformer (MRT)|-|-|
+|Transformer (DSL)|-|-|
 
-Below table shows that result from both MLE and MRT in Korean-English translation task.
+As you can see, Transformer outperforms in ENKO/KOEN task.
+I couldn't run MRT on Transformer, due to lack of memory.
+
+|beam_size|enko|koen|
+|:-:|:-:|:-:|
+|1|31.65|28.93|
+|5|32.53|29.67|
+|10|32.48|29.37|
 
 ### Samples
+
+Below table shows that result from both MLE and MRT in Korean-English translation task.
 
 |INPUT|REF|MLE|MRT|
 |-|-|-|-|
