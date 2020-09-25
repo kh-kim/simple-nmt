@@ -12,6 +12,46 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 - Beam search with mini-batch in parallel
 - [Dual Supervised Learning](https://arxiv.org/abs/1707.00415)
 
+### Implemented Equations
+
+#### Maximum Likelihood Estimation (MLE)
+
+![](https://latex.codecogs.com/svg.latex?\begin{gathered}\mathcal{D}=\{(x_i,y_i\}_{i=1}^N%20\\\\\hat{\theta}\leftarrow\theta-\eta\nabla_\theta\mathcal{L}(\theta)%20\\\mathcal{L}(\theta)=-\sum_{i=1}^N{\log{P(y_i|x_i;\theta)}}\end{gathered})
+
+<!-- $$\begin{gathered}
+\mathcal{D}=\{(x_i,y_i\}_{i=1}^N \\
+\\
+\hat{\theta}\leftarrow\theta-\eta\nabla_\theta\mathcal{L}(\theta) \\
+\mathcal{L}(\theta)=-\sum_{i=1}^N{\log{P(y_i|x_i;\theta)}}
+\end{gathered}$$ -->
+
+#### Minimum Risk Training (MRT)
+
+![]https://latex.codecogs.com/svg.latex?\begin{gathered}\nabla_\theta\mathcal{L}(\theta)=-\nabla_\theta\sum_{i=1}^N{}{%20%20%20%20\Big(\text{reward}(y_i,\hat{y}_i)-\frac{1}{K}\sum_{k=1}^K{%20%20%20%20%20%20%20%20\text{reward}(y_i,\hat{y}_{i,k})%20%20%20%20}\Big)\times\log{P(\hat{y}_i|x_i;\theta)}},%20\\\text{where%20}\hat{y}_i\sim{P(\text{y}|x_i;\theta)}.\end{gathered})
+
+<!-- $$\begin{gathered}
+\nabla_\theta\mathcal{L}(\theta)=-\nabla_\theta\sum_{i=1}^N{}{
+    \Big(\text{reward}(y_i,\hat{y}_i)-\frac{1}{K}\sum_{k=1}^K{
+        \text{reward}(y_i,\hat{y}_{i,k})
+    }\Big)\times\log{P(\hat{y}_i|x_i;\theta)}
+}, \\
+\text{where }\hat{y}_i\sim{P(\text{y}|x_i;\theta)}.
+\end{gathered}$$ -->
+
+#### Dual Supervised Learning (DSL)
+
+![](https://latex.codecogs.com/svg.latex?\begin{gathered}\theta_{x\rightarrow{y}}\leftarrow\theta_{x\rightarrow{y}}-\eta\nabla_{\theta_{x\rightarrow{y}}}\mathcal{L}(\theta_{x\rightarrow{y}})%20\\\mathcal{L}(\theta_{x\rightarrow{y}})=-\sum_{i=1}^N{%20%20%20%20\log{P(y_i|x_i;\theta_{x\rightarrow{y}})}}+\bigg\|%20%20%20%20\Big(\log{P(y_i|x_i;\theta_{x\rightarrow{y}})}+\log{\hat{P}(x_i)}\Big)%20%20%20%20-\Big(\log{P(x_i|y_i;\theta_{y\rightarrow{x}})}+\log{\hat{P}(y_i)}\Big)\bigg\|_2^2\end{gathered})
+
+<!-- $$\begin{gathered}
+\theta_{x\rightarrow{y}}\leftarrow\theta_{x\rightarrow{y}}-\eta\nabla_{\theta_{x\rightarrow{y}}}\mathcal{L}(\theta_{x\rightarrow{y}}) \\
+\mathcal{L}(\theta_{x\rightarrow{y}})=-\sum_{i=1}^N{
+    \log{P(y_i|x_i;\theta_{x\rightarrow{y}})}
+}+\bigg\|
+    \Big(\log{P(y_i|x_i;\theta_{x\rightarrow{y}})}+\log{\hat{P}(x_i)}\Big)
+    -\Big(\log{P(x_i|y_i;\theta_{y\rightarrow{x}})}+\log{\hat{P}(y_i)}\Big)
+\bigg\|_2^2
+\end{gathered}$$ -->
+
 ## Pre-requisite
 
 - Python 3.6 or higher
@@ -88,19 +128,28 @@ example usage:
 #### Seq2Seq
 
 ```bash
-$ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko --gpu_id 0 --batch_size 128 --n_epochs 30 --max_length 100 --dropout .2 --word_vec_size 512 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 2 --lr 1e-3 --lr_step 0 --use_adam --rl_n_epochs 0 --model_fn ./model.pth
+$ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
+--gpu_id 0 --batch_size 128 --n_epochs 30 --max_length 100 --dropout .2 \
+--word_vec_size 512 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 2 \
+--lr 1e-3 --lr_step 0 --use_adam --rl_n_epochs 0 \
+--model_fn ./model.pth
 ```
 
 #### To continue with RL training
 
 ```bash
-$ python continue_train.py --load_fn ./model.pth --model_fn ./model.rl.pth --init_epoch 31 --iteration_per_update 1 --max_grad_norm 5
+$ python continue_train.py --load_fn ./model.pth --model_fn ./model.rl.pth \
+--init_epoch 31 --iteration_per_update 1 --max_grad_norm 5
 ```
 
 #### Transformer
 
 ```bash
-$ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko --gpu_id 0 --batch_size 128 --n_epochs 30 --max_length 100 --dropout .2 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 32 --lr 1e-3 --lr_step 0 --use_adam --use_transformer --rl_n_epochs 0 --model_fn ./model.pth
+$ python train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
+--gpu_id 0 --batch_size 128 --n_epochs 30 --max_length 100 --dropout .2 \
+--hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 32 \
+--lr 1e-3 --lr_step 0 --use_adam --use_transformer --rl_n_epochs 0 \
+--model_fn ./model.pth
 ```
 
 #### Dual Supervised Learning
@@ -151,14 +200,54 @@ You may also need to change the argument parameters.
 
 ## Evaluation
 
-To evaluate the implementation, I trained my own corpus from many website crawling.
+### Setup
 
-|Corpus|Lang1|Lang2|#Lines|Lang1 #Words|Lang2 #Words|
-|-|-|-|-|-|-|
-|Train-set|en|ko|2,814,676|40,643,480|49,735,827|
-|Valid-set|en|ko|9,885|142,822|175,569|
+In order to evaluate this project, I used public dataset from [AI-HUB](https://aihub.or.kr/), which provides 1,600,000 pairs of sentence.
+I randomly split this data into train/valid/test set by following number of lines each.
+In fact, original test set, which has about 200000 lines, is too big to take bunch of evaluations, I reduced it to 1,000 lines.
+(In other words, you can get better model, if you put removed 200,000 lines into training set.)
 
-Also, I tested Minimum Risk Training (MRT). After 18 epochs of training with Maximum Likelihood Estimation (MLE), I trained 10 more epochs with MRT. Below table shows that MRT has much better BLEU than MLE.
+|set|lang|#lines|#tokens|#characters|
+|-|-|-|-|-|
+|train|en|1,200,000|43,700,390|367,477,362|
+||ko|1,200,000|39,066,127|344,881,403|
+|valid|en|200,000|7,286,230|61,262,147|
+||ko|200,000|6,516,442|57,518,240|
+|valid-1000|en|1,000|36,307|305,369|
+||ko|1,000|32,282|285,911|
+|test-1000|en|1,000|35,686|298,993|
+||ko|1,000|31,720|280,126|
+
+Each dataset is tokenized with Mecab/MosesTokenizer and BPE.
+After preprocessing, each language has vocabulary size like as below:
+
+|en|ko|
+|-|-|
+|20,525|29,411|
+
+Also, we have following hyper-parameters for each model to proceed a evaluation.
+
+|parameter|seq2seq|transformer|
+|-|-|-|
+|batch_size|320|4096|
+|word_vec_size|512| - |
+|hidden_size|768|768|
+|n_layers|4|4|
+|n_splits| - |8|
+|n_epochs|30|30|
+
+Below is a table for hyper-parameters for each algorithm.
+
+|parameter|MLE|MRT|DSL|
+|-|-|-|-|
+|n_epochs|30|30+40|5+25|
+|optimizer|Adam|SGD|Adam|
+|lr|1e-3|1e-2|1e-3|
+|max_grad_norm|1e+8|5|1e+8|
+
+### Results
+
+Following table shows a evaluation result for each algorithm.
 
 |||koen|||enko||
 |-|-|-|-|-|-|-|
@@ -176,6 +265,8 @@ Also, I tested Minimum Risk Training (MRT). After 18 epochs of training with Max
 |28|27.73|29.7087|24.54|26.83|28.3358|29.11
 
 Below table shows that result from both MLE and MRT in Korean-English translation task.
+
+### Samples
 
 |INPUT|REF|MLE|MRT|
 |-|-|-|-|
