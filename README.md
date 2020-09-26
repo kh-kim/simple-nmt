@@ -8,11 +8,19 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 - [LSTM sequence-to-seuqnce with attention](http://aclweb.org/anthology/D15-1166)
 - [Transformer](https://arxiv.org/abs/1706.03762)
+  - Pre-Layer Normalized Transformer
+  - Rectified Adam
 - Reinforcement learning for fine-tuning like [Minimum Risk Training (MRT)](https://arxiv.org/abs/1512.02433)
-- Beam search with mini-batch in parallel
 - [Dual Supervised Learning](https://arxiv.org/abs/1707.00415)
+- Beam search with mini-batch in parallel
 
-### Implemented Equations
+### Implemented Architectures
+
+#### Sequence-to-Sequence with Attention
+
+#### Pre-Layer Normalized Transformer (Pre-LN Transformer)
+
+### Implemented Optimization Algorithms
 
 #### Maximum Likelihood Estimation (MLE)
 
@@ -20,7 +28,7 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 #### Minimum Risk Training (MRT)
 
-<p align="center"><img src="/tex/e2178b9206e88ee3c33c657344023294.svg?invert_in_darkmode&sanitize=true" align=middle width=552.7717536pt height=74.31972569999999pt/></p>
+<p align="center"><img src="/tex/9adfbd5b3e9441850e393098e3337a1a.svg?invert_in_darkmode&sanitize=true" align=middle width=552.7717469999999pt height=74.31972569999999pt/></p>
 
 #### Dual Supervised Learning (DSL)
 
