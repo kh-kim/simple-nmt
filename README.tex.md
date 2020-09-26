@@ -8,11 +8,19 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 - [LSTM sequence-to-seuqnce with attention](http://aclweb.org/anthology/D15-1166)
 - [Transformer](https://arxiv.org/abs/1706.03762)
+  - Pre-Layer Normalized Transformer
+  - Rectified Adam
 - Reinforcement learning for fine-tuning like [Minimum Risk Training (MRT)](https://arxiv.org/abs/1512.02433)
-- Beam search with mini-batch in parallel
 - [Dual Supervised Learning](https://arxiv.org/abs/1707.00415)
+- Beam search with mini-batch in parallel
 
-### Implemented Equations
+### Implemented Architectures
+
+#### Sequence-to-Sequence with Attention
+
+#### Pre-Layer Normalized Transformer (Pre-LN Transformer)
+
+### Implemented Optimization Algorithms
 
 #### Maximum Likelihood Estimation (MLE)
 
@@ -26,8 +34,8 @@ $$\begin{gathered}
 #### Minimum Risk Training (MRT)
 
 $$\begin{gathered}
-\nabla_\theta\mathcal{L}(\theta)=-\nabla_\theta\sum_{i=1}^N{}{
-    \Big(\text{reward}(y_i,\hat{y}_i)-\frac{1}{K}\sum_{k=1}^K{
+\nabla_\theta\mathcal{L}(\theta)=\nabla_\theta\sum_{i=1}^N{}{
+    -\Big(\text{reward}(y_i,\hat{y}_i)-\frac{1}{K}\sum_{k=1}^K{
         \text{reward}(y_i,\hat{y}_{i,k})
     }\Big)\times\log{P(\hat{y}_i|x_i;\theta)}
 }, \\
