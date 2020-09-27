@@ -14,12 +14,6 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 - [Dual Supervised Learning](https://arxiv.org/abs/1707.00415)
 - Beam search with mini-batch in parallel
 
-### Implemented Architectures
-
-#### Sequence-to-Sequence with Attention
-
-#### Pre-Layer Normalized Transformer (Pre-LN Transformer)
-
 ### Implemented Optimization Algorithms
 
 #### Maximum Likelihood Estimation (MLE)
