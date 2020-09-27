@@ -114,14 +114,14 @@ class EncoderBlock(nn.Module):
         # |x|    = (batch_size, n, hidden_size)
         # |mask| = (batch_size, n, n)
 
-        # Post-LM:
+        # Post-LN:
         # z = self.attn_norm(x + self.attn_dropout(self.attn(Q=x,
         #                                                    K=x,
         #                                                    V=x,
         #                                                    mask=mask)))
         # z = self.fc_norm(z + self.fc_dropout(self.fc(z)))
 
-        # Pre-LM:
+        # Pre-LN:
         z = self.attn_norm(x)
         z = x + self.attn_dropout(self.attn(Q=z,
                                             K=z,
@@ -172,12 +172,12 @@ class DecoderBlock(nn.Module):
             # |future_mask| = (batch_size, m, m)
             # |z|           = (batch_size, m, hidden_size)
 
-            # Post-LM:
+            # Post-LN:
             # z = self.masked_attn_norm(x + self.masked_attn_dropout(
             #     self.masked_attn(x, x, x, mask=future_mask)
             # ))
 
-            # Pre-LM:
+            # Pre-LN:
             z = self.masked_attn_norm(x)
             z = x + self.masked_attn_dropout(
                 self.masked_attn(z, z, z, mask=future_mask)
@@ -188,25 +188,25 @@ class DecoderBlock(nn.Module):
             # |future_mask| = None
             # |z|           = (batch_size, 1, hidden_size)
 
-            # Post-LM:
+            # Post-LN:
             # z = self.masked_attn_norm(x + self.masked_attn_dropout(
             #     self.masked_attn(x, prev, prev, mask=None)
             # ))
 
-            # Pre-LM:
+            # Pre-LN:
             normed_prev = self.masked_attn_norm(prev)
             z = self.masked_attn_norm(x)
             z = x + self.masked_attn_dropout(
                 self.masked_attn(z, normed_prev, normed_prev, mask=None)
             )
 
-        # Post-LM:
+        # Post-LN:
         # z = self.attn_norm(z + self.attn_dropout(self.attn(Q=z,
         #                                                    K=key_and_value,
         #                                                    V=key_and_value,
         #                                                    mask=mask)))
 
-        # Pre-LM:
+        # Pre-LN:
         normed_key_and_value = self.attn_norm(key_and_value)
         z = z + self.attn_dropout(self.attn(Q=self.attn_norm(z),
                                             K=normed_key_and_value,
@@ -214,10 +214,10 @@ class DecoderBlock(nn.Module):
                                             mask=mask))
         # |z| = (batch_size, m, hidden_size)
 
-        # Post-LM:
+        # Post-LN:
         # z = self.fc_norm(z + self.fc_dropout(self.fc(z)))
 
-        # Pre-LM:
+        # Pre-LN:
         z = z + self.fc_dropout(self.fc(self.fc_norm(z)))
         # |z| = (batch_size, m, hidden_size)
 
@@ -285,7 +285,7 @@ class Transformer(nn.Module):
               ) for _ in range(n_dec_blocks)],
         )
         self.generator = nn.Sequential(
-            nn.LayerNorm(hidden_size), # Only for Pre-LM Transformer.
+            nn.LayerNorm(hidden_size), # Only for Pre-LN Transformer.
             nn.Linear(hidden_size, output_size),
             nn.LogSoftmax(dim=-1),
         )
