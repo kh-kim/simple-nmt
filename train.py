@@ -157,14 +157,14 @@ def define_argparser(is_continue=False):
     )
 
     p.add_argument(
-        '--use_radam',
-        action='store_true',
-        help='Use rectified Adam as optimizer. Other lr arguments should be changed.',
-    )
-    p.add_argument(
         '--use_adam',
         action='store_true',
         help='Use Adam as optimizer instead of SGD. Other lr arguments should be changed.',
+    )
+    p.add_argument(
+        '--use_radam',
+        action='store_true',
+        help='Use rectified Adam as optimizer. Other lr arguments should be changed.',
     )
 
     p.add_argument(
