@@ -248,6 +248,21 @@ def get_crits(src_vocab_size, tgt_vocab_size, pad_index):
     return crits
 
 
+def get_optimizers(models, config):
+    if config.use_transformer:
+        optimizers = [
+            optim.Adam(models[0].parameters(), betas=(.9, .98)),
+            optim.Adam(models[1].parameters(), betas=(.9, .98)),
+        ]
+    else:
+        optimizers = [
+            optim.Adam(models[0].parameters()),
+            optim.Adam(models[1].parameters()),
+        ]
+
+    return optimizers
+
+
 def main(config, model_weight=None, opt_weight=None):
     def print_config(config):
         pp = pprint.PrettyPrinter(indent=4)
@@ -293,26 +308,17 @@ def main(config, model_weight=None, opt_weight=None):
 
     dsl_trainer = DSLTrainer(config)
 
-    if config.use_transformer:
-        optimizers = [
-            optim.Adam(models[0].parameters(), betas=(.9, .98)),
-            optim.Adam(models[1].parameters(), betas=(.9, .98)),
-        ]
-    else:
-        optimizers = [
-            optim.Adam(models[0].parameters()),
-            optim.Adam(models[1].parameters()),
-        ]
+    optimizers = get_optimizers(models, config)
+
+    if opt_weight is not None:
+        for opt, w in zip(optimizers, opt_weight):
+            opt.load_state_dict(w)
 
     if config.verbose >= 2:
         print(language_models)
         print(models)
         print(crits)
         print(optimizers)
-
-    if opt_weight is not None:
-        for opt, w in zip(optimizers, opt_weight):
-            opt.load_state_dict(w)
 
     dsl_trainer.train(
         models,
