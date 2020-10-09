@@ -57,7 +57,7 @@ class DualSupervisedTrainingEngine(Engine):
         # (Because originally src and tgt are sorted by the length of samples in src.)
 
         # sort by length.
-        indice = l.topk(l.size(0))[1]
+        indice = l.sort(descending=True)[1]
 
         # re-order based on the indice.
         x_ = x.index_select(dim=0, index=indice).contiguous()
