@@ -49,7 +49,7 @@ class DualSupervisedTrainingEngine(Engine):
         ]
 
     @staticmethod
-    def _reordering(x, y, l):
+    def _reorder(x, y, l):
         # This method is one of important methods in this class.
         # Since encoder takes packed_sequence instance,
         # the samples in mini-batch must be sorted by lengths.
@@ -70,11 +70,15 @@ class DualSupervisedTrainingEngine(Engine):
         return x_, (y_, l_), restore_indice
 
     @staticmethod
+    def _restore_order(x, restore_indice):
+        return x.index_select(dim=0, index=restore_indice)
+
+    @staticmethod
     def _get_loss(x, y, x_hat, y_hat, crits, x_lm=None, y_lm=None, lagrange=1e-3):
-        # |x| = (batch_size, length0)
-        # |y| = (batch_size, length1)
-        # |x_hat| = (batch_size, length0, output_size0)
-        # |y_hat| = (batch_size, length1, output_size1)
+        # |x| = (batch_size, n)
+        # |y| = (batch_size, m)
+        # |x_hat| = (batch_size, n, output_size0)
+        # |y_hat| = (batch_size, m, output_size1)
         # |x_lm| = |x_hat|
         # |y_lm| = |y_hat|
 
@@ -92,6 +96,10 @@ class DualSupervisedTrainingEngine(Engine):
         log_p_y_given_x = log_p_y_given_x.view(y.size(0), -1).sum(dim=-1)
         log_p_x_given_y = log_p_x_given_y.view(x.size(0), -1).sum(dim=-1)
         # |log_p_y_given_x| = |log_p_x_given_y| = (batch_size, )
+
+        # Negative Log-likelihood
+        loss_x2y = -log_p_y_given_x
+        loss_y2x = -log_p_x_given_y
 
         if x_lm is not None and y_lm is not None:
             log_p_x = -crits[Y2X](
@@ -114,14 +122,14 @@ class DualSupervisedTrainingEngine(Engine):
             dual_loss = lagrange * ((log_p_x + log_p_y_given_x.detach()) - (log_p_y + log_p_x_given_y.detach()))**2
 
             # Note that 'detach()' is used to prevent unnecessary back-propagation.
-            log_p_y_given_x -= lagrange * ((log_p_x + log_p_y_given_x) - (log_p_y + log_p_x_given_y.detach()))**2
-            log_p_x_given_y -= lagrange * ((log_p_x + log_p_y_given_x.detach()) - (log_p_y + log_p_x_given_y))**2
+            loss_x2y += lagrange * ((log_p_x + log_p_y_given_x) - (log_p_y + log_p_x_given_y.detach()))**2
+            loss_y2x += lagrange * ((log_p_x + log_p_y_given_x.detach()) - (log_p_y + log_p_x_given_y))**2
         else:
             dual_loss = None
 
         return (
-            -log_p_y_given_x.sum(),
-            -log_p_x_given_y.sum(),
+            loss_x2y.sum(),
+            loss_y2x.sum(),
             float(dual_loss.sum()) if dual_loss is not None else .0,
         )
 
@@ -158,19 +166,25 @@ class DualSupervisedTrainingEngine(Engine):
             #Y2X
             # Since encoder in seq2seq takes packed_sequence instance,
             # we need to re-sort if we use reversed src and tgt.
-            x, y, restore_indice = DualSupervisedTrainingEngine._reordering(
+            x, y, restore_indice = DualSupervisedTrainingEngine._reorder(
                 mini_batch.src[0][:, :-1],
                 mini_batch.tgt[0][:, 1:-1],
                 mini_batch.tgt[1] - 2,
             )
             # |x| = (batch_size, n)
             # |y| = (batch_size, m)
-            x_hat = engine.models[Y2X](y, x).index_select(dim=0, index=restore_indice)
+            x_hat = DualSupervisedTrainingEngine._restore_order(
+                engine.models[Y2X](y, x),
+                restore_indice=restore_indice,
+            )
             # |x_hat| = (batch_size, n, x_vocab_size)
 
             if engine.state.epoch > engine.config.dsl_n_warmup_epochs:
                 with torch.no_grad():
-                    x_hat_lm = engine.language_models[Y2X](x).index_select(dim=0, index=restore_indice)
+                    x_hat_lm = DualSupervisedTrainingEngine._restore_order(
+                        engine.language_models[Y2X](x),
+                        restore_indice=restore_indice,
+                    )
                     # |x_hat_lm| = |x_hat|
 
             x, y = mini_batch.src[0][:, 1:], mini_batch.tgt[0][:, 1:]
@@ -244,12 +258,15 @@ class DualSupervisedTrainingEngine(Engine):
                 # |y_hat| = (batch_size, m, y_vocab_size)
 
                 # Y2X
-                x, y, restore_indice = DualSupervisedTrainingEngine._reordering(
+                x, y, restore_indice = DualSupervisedTrainingEngine._reorder(
                     mini_batch.src[0][:, :-1],
                     mini_batch.tgt[0][:, 1:-1],
                     mini_batch.tgt[1] - 2,
                 )
-                x_hat = engine.models[Y2X](y, x).index_select(dim=0, index=restore_indice)
+                x_hat = DualSupervisedTrainingEngine._restore_order(
+                    engine.models[Y2X](y, x),
+                    restore_indice=restore_indice,
+                )
                 # |x_hat| = (batch_size, n, x_vocab_size)
 
                 # You don't have to use _get_loss method, 
@@ -301,7 +318,7 @@ class DualSupervisedTrainingEngine(Engine):
                 avg_y2x = engine.state.metrics['y2x']
                 avg_reg = engine.state.metrics['reg']
 
-                print('Epoch {} - |param|={:.2e} |g_param|={:.2e} log_p_y_given_x={:.4e} ppl_x2y={:.2f} log_p_x_given_y={:.4e} ppl_y2x={:.2f} dual_loss={:.4e}'.format(
+                print('Epoch {} - |param|={:.2e} |g_param|={:.2e} loss_x2y={:.4e} ppl_x2y={:.2f} loss_y2x={:.4e} ppl_y2x={:.2f} dual_loss={:.4e}'.format(
                     engine.state.epoch,
                     avg_p_norm,
                     avg_g_norm,
