@@ -209,6 +209,8 @@ class DualSupervisedTrainingEngine(Engine):
             else:
                 backward_target.backward()
 
+        x_word_count = int(mini_batch.src[1].sum())
+        y_word_count = int(mini_batch.tgt[1].sum())
         p_norm = float(get_parameter_norm(list(engine.models[X2Y].parameters()) + 
                                           list(engine.models[Y2X].parameters())))
         g_norm = float(get_grad_norm(list(engine.models[X2Y].parameters()) +
@@ -232,8 +234,8 @@ class DualSupervisedTrainingEngine(Engine):
                     optimizer.step()
 
         return {
-            'x2y': float(loss_x2y / mini_batch.src[1].sum()),
-            'y2x': float(loss_y2x / mini_batch.tgt[1].sum()),
+            'x2y': float(loss_x2y / y_word_count),
+            'y2x': float(loss_y2x / x_word_count),
             'reg': float(dual_loss / x.size(0)),
             '|param|': p_norm if not np.isnan(p_norm) and not np.isinf(p_norm) else 0.,
             '|g_param|': g_norm if not np.isnan(g_norm) and not np.isinf(g_norm) else 0.,
@@ -281,9 +283,12 @@ class DualSupervisedTrainingEngine(Engine):
                     x.contiguous().view(-1)
                 ).sum()
 
+                x_word_count = int(mini_batch.src[1].sum())
+                y_word_count = int(mini_batch.tgt[1].sum())
+
         return {
-            'x2y': float(loss_x2y / mini_batch.src[1].sum()),
-            'y2x': float(loss_y2x / mini_batch.tgt[1].sum()),
+            'x2y': float(loss_x2y / y_word_count),
+            'y2x': float(loss_y2x / x_word_count),
         }
 
     @staticmethod
