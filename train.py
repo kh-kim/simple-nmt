@@ -268,7 +268,7 @@ def get_optimizer(model, config):
     return optimizer
 
 
-def get_scheduler(optimizer, n_minibatchs, config):
+def get_scheduler(optimizer, config):
     if config.lr_step > 0:
         lr_scheduler = optim.lr_scheduler.MultiStepLR(
             optimizer,
@@ -319,7 +319,7 @@ def main(config, model_weight=None, opt_weight=None):
     if opt_weight is not None and (config.use_adam or config.use_radam):
         optimizer.load_state_dict(opt_weight)
 
-    lr_scheduler = get_scheduler(optimizer, len(loader.train_iter), config)
+    lr_scheduler = get_scheduler(optimizer, config)
 
     if config.verbose >= 2:
         print(model)
