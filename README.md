@@ -6,7 +6,7 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 ## Features
 
-- [LSTM sequence-to-seuqnce with attention](http://aclweb.org/anthology/D15-1166)
+- [LSTM sequence-to-sequence with attention](http://aclweb.org/anthology/D15-1166)
 - [Transformer](https://arxiv.org/abs/1706.03762)
   - Pre-Layer Normalized Transformer
   - Rectified Adam
