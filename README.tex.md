@@ -331,3 +331,4 @@ Below table shows that result from both MLE and MRT in Korean-English translatio
 - [[Wu et al, 2016](https://arxiv.org/abs/1609.08144)] Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation
 - [[Vaswani et al., 2017](https://arxiv.org/abs/1706.03762)] Attention is All You Need
 - [[Xia et al., 2017](https://arxiv.org/abs/1707.00415)] Dual Supervised Learning
+
