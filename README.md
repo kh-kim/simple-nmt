@@ -18,27 +18,31 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 #### Maximum Likelihood Estimation (MLE)
 
-$$\begin{gathered}
+<!-- $$\begin{gathered}
 \mathcal{D}=\{(x_i,y_i\}_{i=1}^N \\
 \\
 \hat{\theta}\leftarrow\theta-\eta\nabla_\theta\mathcal{L}(\theta) \\
 \mathcal{L}(\theta)=-\sum_{i=1}^N{\log{P(y_i|x_i;\theta)}}
-\end{gathered}$$
+\end{gathered}$$ -->
+
+![](./tex/287076bf1e54cf080ee5e6c6d9432270.svg)
 
 #### Minimum Risk Training (MRT)
 
-$$\begin{gathered}
+<!-- $$\begin{gathered}
 \nabla_\theta\mathcal{L}(\theta)=\nabla_\theta\sum_{i=1}^N{}{
     -\Big(\text{reward}(y_i,\hat{y}_i)-\frac{1}{K}\sum_{k=1}^K{
         \text{reward}(y_i,\hat{y}_{i,k})
     }\Big)\times\log{P(\hat{y}_i|x_i;\theta)}
 }, \\
 \text{where }\hat{y}_i\sim{P(\text{y}|x_i;\theta)}.
-\end{gathered}$$
+\end{gathered}$$ -->
+
+![](./tex/9adfbd5b3e9441850e393098e3337a1a.svg)
 
 #### Dual Supervised Learning (DSL)
 
-$$\begin{gathered}
+<!-- $$\begin{gathered}
 \theta_{x\rightarrow{y}}\leftarrow\theta_{x\rightarrow{y}}-\eta\nabla_{\theta_{x\rightarrow{y}}}\mathcal{L}(\theta_{x\rightarrow{y}}) \\
 \mathcal{L}(\theta_{x\rightarrow{y}})=-\sum_{i=1}^N{
     \log{P(y_i|x_i;\theta_{x\rightarrow{y}})}
@@ -46,7 +50,9 @@ $$\begin{gathered}
     \Big(\log{P(y_i|x_i;\theta_{x\rightarrow{y}})}+\log{\hat{P}(x_i)}\Big)
     -\Big(\log{P(x_i|y_i;\theta_{y\rightarrow{x}})}+\log{\hat{P}(y_i)}\Big)
 \bigg\|_2^2
-\end{gathered}$$
+\end{gathered}$$ -->
+
+![](./tex/ca879c9675054d376d7486ef21cc5317.svg)
 
 ## Pre-requisite
 
