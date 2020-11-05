@@ -288,10 +288,13 @@ Following table shows a evaluation result for each algorithm.
 |Sequence-to-Sequence (DSL)|33.47|31.00|
 |Transformer|34.96|31.84|
 |Transformer (MRT)|-|-|
-|Transformer (DSL)|-|-|
+|Transformer (DSL)|35.48|32.80|
 
 As you can see, Transformer outperforms in ENKO/KOEN task.
 I couldn't run MRT on Transformer, due to lack of memory.
+
+Following table shows the result based on beam-size on Sequence-to-Sequence model.
+Table shows that beam search improve BLEU score without data adding and model change.
 
 |beam_size|enko|koen|
 |:-:|:-:|:-:|
