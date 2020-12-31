@@ -433,6 +433,7 @@ class DualSupervisedTrainer():
         n_epochs,
         lr_schedulers=None
     ):
+        # Declare train and validation engine with necessary objects.
         train_engine = DualSupervisedTrainingEngine(
             DualSupervisedTrainingEngine.train,
             models,
@@ -452,12 +453,16 @@ class DualSupervisedTrainer():
             config=self.config,
         )
 
+        # Do necessary attach procedure to train & validation engine.
+        # Progress bar and metric would be attached.
         DualSupervisedTrainingEngine.attach(
             train_engine,
             validation_engine,
             verbose=self.config.verbose
         )
 
+        # After every train epoch, run 1 validation epoch.
+        # Also, apply LR scheduler if it is necessary.
         def run_validation(engine, validation_engine, valid_loader):
             validation_engine.run(valid_loader, max_epochs=1)
 
@@ -465,18 +470,25 @@ class DualSupervisedTrainer():
                 for s in engine.lr_schedulers:
                     s.step()
 
+        # Attach above call-back function.
         train_engine.add_event_handler(
-            Events.EPOCH_COMPLETED, run_validation, validation_engine, valid_loader
+            Events.EPOCH_COMPLETED,
+            run_validation,
+            validation_engine,
+            valid_loader
         )
+        # Attach other call-back function for initiation of the training.
         train_engine.add_event_handler(
             Events.STARTED,
             DualSupervisedTrainingEngine.resume_training,
             self.config.init_epoch,
         )
 
+        # Attach validation loss check procedure for every end of validation epoch.
         validation_engine.add_event_handler(
             Events.EPOCH_COMPLETED, DualSupervisedTrainingEngine.check_best
         )
+        # Attach model save procedure for every end of validation epoch.
         validation_engine.add_event_handler(
             Events.EPOCH_COMPLETED,
             DualSupervisedTrainingEngine.save_model,
@@ -485,6 +497,7 @@ class DualSupervisedTrainer():
             vocabs,
         )
 
+        # Start training.
         train_engine.run(train_loader, max_epochs=n_epochs)
 
         return models
