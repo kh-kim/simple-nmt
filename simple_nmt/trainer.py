@@ -245,6 +245,7 @@ class SingleTrainer():
         n_epochs,
         lr_scheduler=None
     ):
+        # Declare train and validation engine with necessary objects.
         train_engine = self.target_engine_class(
             self.target_engine_class.train,
             model,
@@ -262,30 +263,41 @@ class SingleTrainer():
             config=self.config
         )
 
+        # Do necessary attach procedure to train & validation engine.
+        # Progress bar and metric would be attached.
         self.target_engine_class.attach(
             train_engine,
             validation_engine,
             verbose=self.config.verbose
         )
 
+        # After every train epoch, run 1 validation epoch.
+        # Also, apply LR scheduler if it is necessary.
         def run_validation(engine, validation_engine, valid_loader):
             validation_engine.run(valid_loader, max_epochs=1)
 
             if engine.lr_scheduler is not None:
                 engine.lr_scheduler.step()
 
+        # Attach above call-back function.
         train_engine.add_event_handler(
-            Events.EPOCH_COMPLETED, run_validation, validation_engine, valid_loader
+            Events.EPOCH_COMPLETED,
+            run_validation,
+            validation_engine,
+            valid_loader
         )
+        # Attach other call-back function for initiation of the training.
         train_engine.add_event_handler(
             Events.STARTED,
             self.target_engine_class.resume_training,
             self.config.init_epoch,
         )
 
+        # Attach validation loss check procedure for every end of validation epoch.
         validation_engine.add_event_handler(
             Events.EPOCH_COMPLETED, self.target_engine_class.check_best
         )
+        # Attach model save procedure for every end of validation epoch.
         validation_engine.add_event_handler(
             Events.EPOCH_COMPLETED,
             self.target_engine_class.save_model,
@@ -295,6 +307,7 @@ class SingleTrainer():
             tgt_vocab,
         )
 
+        # Start training.
         train_engine.run(train_loader, max_epochs=n_epochs)
 
         return model
