@@ -1,8 +1,12 @@
 # Simple Neural Machine Translation (Simple-NMT)
 
-This repo contains a simple source code for advanced neural machine translation based on sequence-to-sequence. Most open sources are unnecessarily too complicated, so those have too many features more than people's expected. Therefore, I hope that this repo can be a good solution for people who doesn't want unnecessarily many features.
+This repo contains a simple source code for advanced neural machine translation based on Sequence-to-Sequence and Transformer.
+Most open sources have unnecessarily too complicated structures, because they have too many features more than people's expected.
+I believe that this repo has minimal features to build NMT system.
+Therefore, I hope that this repo can be a good start for people who doesn't want unnecessarily many features.
 
-In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_nlpadv/) and [book](https://kh-kim.gitbook.io/natural-language-processing-with-pytorch/), what I conduct. Please, refer those site for further information.
+Also, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_nlpadv/) and [book](https://kh-kim.gitbook.io/natural-language-processing-with-pytorch/), what I conduct.
+Please, refer those sites for further information.
 
 ## Features
 
