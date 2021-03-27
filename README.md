@@ -54,13 +54,87 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 ![](./tex/ca879c9675054d376d7486ef21cc5317.svg)
 
-## Pre-requisite
+## Requirements
 
 - Python 3.6 or higher
 - PyTorch 1.6 or higher
 - TorchText 0.5 or higher
 - PyTorch Ignite
 - [torch-optimizer 0.0.1a15](https://pypi.org/project/torch-optimizer/)
+
+## Evaluation
+
+### Results
+
+First, following table shows an evaluation result for each algorithm.
+
+||enko|koen|
+|:-:|:-:|:-:|
+|Sequence-to-Sequence|32.53|29.67|
+|Sequence-to-Sequence (MRT)|34.04|31.24|
+|Sequence-to-Sequence (DSL)|33.47|31.00|
+|Transformer|34.96|31.84|
+|Transformer (MRT)|-|-|
+|Transformer (DSL)|35.48|32.80|
+
+As you can see, Transformer outperforms in ENKO/KOEN task.
+Note that it was unable to run MRT on Transformer, due to lack of memory.
+
+Following table shows the result based on beam-size on Sequence-to-Sequence model.
+Table shows that beam search improve BLEU score without data adding and model change.
+
+|beam_size|enko|koen|
+|:-:|:-:|:-:|
+|1|31.65|28.93|
+|5|32.53|29.67|
+|10|32.48|29.37|
+
+### Setup
+
+In order to evaluate this project, I used public dataset from [AI-HUB](https://aihub.or.kr/), which provides 1,600,000 pairs of sentence.
+I randomly split this data into train/valid/test set by following number of lines each.
+In fact, original test set, which has about 200000 lines, is too big to take bunch of evaluations, I reduced it to 1,000 lines.
+(In other words, you can get better model, if you put removed 199,000 lines into training set.)
+
+|set|lang|#lines|#tokens|#characters|
+|-|-|-|-|-|
+|train|en|1,200,000|43,700,390|367,477,362|
+||ko|1,200,000|39,066,127|344,881,403|
+|valid|en|200,000|7,286,230|61,262,147|
+||ko|200,000|6,516,442|57,518,240|
+|valid-1000|en|1,000|36,307|305,369|
+||ko|1,000|32,282|285,911|
+|test-1000|en|1,000|35,686|298,993|
+||ko|1,000|31,720|280,126|
+
+Each dataset is tokenized with Mecab/MosesTokenizer and BPE.
+After preprocessing, each language has vocabulary size like as below:
+
+|en|ko|
+|-|-|
+|20,525|29,411|
+
+Also, we have following hyper-parameters for each model to proceed a evaluation.
+
+|parameter|seq2seq|transformer|
+|-|-|-|
+|batch_size|320|4096|
+|word_vec_size|512| - |
+|hidden_size|768|768|
+|n_layers|4|4|
+|n_splits| - |8|
+|n_epochs|30|30|
+
+Below is a table for hyper-parameters for each algorithm.
+
+|parameter|MLE|MRT|DSL|
+|-|-|-|-|
+|n_epochs|30|30 + 40|30 + 10|
+|optimizer|Adam|SGD|Adam|
+|lr|1e-3|1e-2|1e-2|
+|max_grad_norm|1e+8|5|1e+8 $\rightarrow$ 5|
+
+Please, note that MRT has different optimization setup.
 
 ## Usage
 
@@ -234,81 +308,7 @@ example usage:
 
 You may also need to change the argument parameters.
 
-## Evaluation
-
-### Setup
-
-In order to evaluate this project, I used public dataset from [AI-HUB](https://aihub.or.kr/), which provides 1,600,000 pairs of sentence.
-I randomly split this data into train/valid/test set by following number of lines each.
-In fact, original test set, which has about 200000 lines, is too big to take bunch of evaluations, I reduced it to 1,000 lines.
-(In other words, you can get better model, if you put removed 200,000 lines into training set.)
-
-|set|lang|#lines|#tokens|#characters|
-|-|-|-|-|-|
-|train|en|1,200,000|43,700,390|367,477,362|
-||ko|1,200,000|39,066,127|344,881,403|
-|valid|en|200,000|7,286,230|61,262,147|
-||ko|200,000|6,516,442|57,518,240|
-|valid-1000|en|1,000|36,307|305,369|
-||ko|1,000|32,282|285,911|
-|test-1000|en|1,000|35,686|298,993|
-||ko|1,000|31,720|280,126|
-
-Each dataset is tokenized with Mecab/MosesTokenizer and BPE.
-After preprocessing, each language has vocabulary size like as below:
-
-|en|ko|
-|-|-|
-|20,525|29,411|
-
-Also, we have following hyper-parameters for each model to proceed a evaluation.
-
-|parameter|seq2seq|transformer|
-|-|-|-|
-|batch_size|320|4096|
-|word_vec_size|512| - |
-|hidden_size|768|768|
-|n_layers|4|4|
-|n_splits| - |8|
-|n_epochs|30|30|
-
-Below is a table for hyper-parameters for each algorithm.
-
-|parameter|MLE|MRT|DSL|
-|-|-|-|-|
-|n_epochs|30|30 + 40|30 + 10|
-|optimizer|Adam|SGD|Adam|
-|lr|1e-3|1e-2|1e-2|
-|max_grad_norm|1e+8|5|1e+8 $\rightarrow$ 5|
-
-Please, note that MRT has different optimization setup.
-
-### Results
-
-Following table shows a evaluation result for each algorithm.
-
-||enko|koen|
-|:-:|:-:|:-:|
-|Sequence-to-Sequence|32.53|29.67|
-|Sequence-to-Sequence (MRT)|34.04|31.24|
-|Sequence-to-Sequence (DSL)|33.47|31.00|
-|Transformer|34.96|31.84|
-|Transformer (MRT)|-|-|
-|Transformer (DSL)|35.48|32.80|
-
-As you can see, Transformer outperforms in ENKO/KOEN task.
-I couldn't run MRT on Transformer, due to lack of memory.
-
-Following table shows the result based on beam-size on Sequence-to-Sequence model.
-Table shows that beam search improve BLEU score without data adding and model change.
-
-|beam_size|enko|koen|
-|:-:|:-:|:-:|
-|1|31.65|28.93|
-|5|32.53|29.67|
-|10|32.48|29.37|
-
-### Samples
+## Translation Examples
 
 Below table shows that result from both MLE and MRT in Korean-English translation task.
 
