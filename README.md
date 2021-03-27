@@ -6,6 +6,8 @@ In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_n
 
 ## Features
 
+This repo provides many features, and many of those codes were written from scratch. (e.g. Transformer and Beam search)
+
 - [LSTM sequence-to-sequence with attention](http://aclweb.org/anthology/D15-1166)
 - [Transformer](https://arxiv.org/abs/1706.03762)
   - Pre-Layer Normalized Transformer
@@ -115,6 +117,8 @@ After preprocessing, each language has vocabulary size like as below:
 |20,525|29,411|
 
 Also, we have following hyper-parameters for each model to proceed a evaluation.
+Note that both architectures have small number of parameters, because I don't have enough corpus.
+You need to increase the number of parameters, if you have more corpus.
 
 |parameter|seq2seq|transformer|
 |-|-|-|
