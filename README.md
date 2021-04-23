@@ -19,6 +19,8 @@ This repo provides many features, and many of those codes were written from scra
 - Reinforcement learning for fine-tuning like [Minimum Risk Training (MRT)](https://arxiv.org/abs/1512.02433)
 - [Dual Supervised Learning](https://arxiv.org/abs/1707.00415)
 - Beam search with mini-batch in parallel
+- Gradient accumulation
+- Mixed precision training
 
 ### Implemented Optimization Algorithms
 
