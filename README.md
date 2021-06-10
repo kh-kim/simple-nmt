@@ -1,40 +1,150 @@
 # Simple Neural Machine Translation (Simple-NMT)
 
-This repo contains a simple source code for advanced neural machine translation based on sequence-to-sequence. Most open sources are unnecessarily too complicated, so those have too many features more than people's expected. Therefore, I hope that this repo can be a good solution for people who doesn't want unnecessarily many features.
+This repo contains a simple source code for advanced neural machine translation based on Sequence-to-Sequence and Transformer.
+Most open sources have unnecessarily too complicated structures, because they have too many features more than people's expected.
+I believe that this repo has minimal features to build NMT system.
+Therefore, I hope that this repo can be a good start for people who doesn't want unnecessarily many features.
 
-In addition, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_nlpadv/) and [book](https://kh-kim.gitbook.io/natural-language-processing-with-pytorch/), what I conduct. Please, refer those site for further information.
+Also, this repo is for [lecture](https://www.fastcampus.co.kr/data_camp_nlpadv/) and [book](https://kh-kim.gitbook.io/natural-language-processing-with-pytorch/), what I conduct.
+Please, refer those sites for further information.
 
 ## Features
 
-- [LSTM sequence-to-seuqnce with attention](http://aclweb.org/anthology/D15-1166)
+This repo provides many features, and many of those codes were written from scratch. (e.g. Transformer and Beam search)
+
+- [LSTM sequence-to-sequence with attention](http://aclweb.org/anthology/D15-1166)
 - [Transformer](https://arxiv.org/abs/1706.03762)
   - Pre-Layer Normalized Transformer
   - Rectified Adam
 - Reinforcement learning for fine-tuning like [Minimum Risk Training (MRT)](https://arxiv.org/abs/1512.02433)
 - [Dual Supervised Learning](https://arxiv.org/abs/1707.00415)
 - Beam search with mini-batch in parallel
+- Gradient accumulation
+- Mixed precision training
 
 ### Implemented Optimization Algorithms
 
 #### Maximum Likelihood Estimation (MLE)
 
-<p align="center"><img src="/tex/287076bf1e54cf080ee5e6c6d9432270.svg?invert_in_darkmode&sanitize=true" align=middle width=194.2640469pt height=129.49760504999998pt/></p>
+<!-- $$\begin{gathered}
+\mathcal{D}=\{(x_i,y_i\}_{i=1}^N \\
+\\
+\hat{\theta}\leftarrow\theta-\eta\nabla_\theta\mathcal{L}(\theta) \\
+\mathcal{L}(\theta)=-\sum_{i=1}^N{\log{P(y_i|x_i;\theta)}}
+\end{gathered}$$ -->
+
+![](./tex/287076bf1e54cf080ee5e6c6d9432270.svg)
 
 #### Minimum Risk Training (MRT)
 
-<p align="center"><img src="/tex/9adfbd5b3e9441850e393098e3337a1a.svg?invert_in_darkmode&sanitize=true" align=middle width=552.7717469999999pt height=74.31972569999999pt/></p>
+<!-- $$\begin{gathered}
+\nabla_\theta\mathcal{L}(\theta)=\nabla_\theta\sum_{i=1}^N{}{
+    -\Big(\text{reward}(y_i,\hat{y}_i)-\frac{1}{K}\sum_{k=1}^K{
+        \text{reward}(y_i,\hat{y}_{i,k})
+    }\Big)\times\log{P(\hat{y}_i|x_i;\theta)}
+}, \\
+\text{where }\hat{y}_i\sim{P(\text{y}|x_i;\theta)}.
+\end{gathered}$$ -->
+
+![](./tex/9adfbd5b3e9441850e393098e3337a1a.svg)
 
 #### Dual Supervised Learning (DSL)
 
-<p align="center"><img src="/tex/ca879c9675054d376d7486ef21cc5317.svg?invert_in_darkmode&sanitize=true" align=middle width=779.88238845pt height=74.2718922pt/></p>
+<!-- $$\begin{gathered}
+\theta_{x\rightarrow{y}}\leftarrow\theta_{x\rightarrow{y}}-\eta\nabla_{\theta_{x\rightarrow{y}}}\mathcal{L}(\theta_{x\rightarrow{y}}) \\
+\mathcal{L}(\theta_{x\rightarrow{y}})=-\sum_{i=1}^N{
+    \log{P(y_i|x_i;\theta_{x\rightarrow{y}})}
+}+\bigg\|
+    \Big(\log{P(y_i|x_i;\theta_{x\rightarrow{y}})}+\log{\hat{P}(x_i)}\Big)
+    -\Big(\log{P(x_i|y_i;\theta_{y\rightarrow{x}})}+\log{\hat{P}(y_i)}\Big)
+\bigg\|_2^2
+\end{gathered}$$ -->
 
-## Pre-requisite
+![](./tex/ca879c9675054d376d7486ef21cc5317.svg)
+
+## Requirements
 
 - Python 3.6 or higher
 - PyTorch 1.6 or higher
 - TorchText 0.5 or higher
 - PyTorch Ignite
 - [torch-optimizer 0.0.1a15](https://pypi.org/project/torch-optimizer/)
+
+## Evaluation
+
+### Results
+
+First, following table shows an evaluation result for each algorithm.
+
+||enko|koen|
+|:-:|:-:|:-:|
+|Sequence-to-Sequence|32.53|29.67|
+|Sequence-to-Sequence (MRT)|34.04|31.24|
+|Sequence-to-Sequence (DSL)|33.47|31.00|
+|Transformer|34.96|31.84|
+|Transformer (MRT)|-|-|
+|Transformer (DSL)|35.48|32.80|
+
+As you can see, Transformer outperforms in ENKO/KOEN task.
+Note that it was unable to run MRT on Transformer, due to lack of memory.
+
+Following table shows the result based on beam-size on Sequence-to-Sequence model.
+Table shows that beam search improve BLEU score without data adding and model change.
+
+|beam_size|enko|koen|
+|:-:|:-:|:-:|
+|1|31.65|28.93|
+|5|32.53|29.67|
+|10|32.48|29.37|
+
+### Setup
+
+In order to evaluate this project, I used public dataset from [AI-HUB](https://aihub.or.kr/), which provides 1,600,000 pairs of sentence.
+I randomly split this data into train/valid/test set by following number of lines each.
+In fact, original test set, which has about 200000 lines, is too big to take bunch of evaluations, I reduced it to 1,000 lines.
+(In other words, you can get better model, if you put removed 199,000 lines into training set.)
+
+|set|lang|#lines|#tokens|#characters|
+|-|-|-|-|-|
+|train|en|1,200,000|43,700,390|367,477,362|
+||ko|1,200,000|39,066,127|344,881,403|
+|valid|en|200,000|7,286,230|61,262,147|
+||ko|200,000|6,516,442|57,518,240|
+|valid-1000|en|1,000|36,307|305,369|
+||ko|1,000|32,282|285,911|
+|test-1000|en|1,000|35,686|298,993|
+||ko|1,000|31,720|280,126|
+
+Each dataset is tokenized with Mecab/MosesTokenizer and BPE.
+After preprocessing, each language has vocabulary size like as below:
+
+|en|ko|
+|-|-|
+|20,525|29,411|
+
+Also, we have following hyper-parameters for each model to proceed a evaluation.
+Note that both architectures have small number of parameters, because I don't have enough corpus.
+You need to increase the number of parameters, if you have more corpus.
+
+|parameter|seq2seq|transformer|
+|-|-|-|
+|batch_size|320|4096|
+|word_vec_size|512| - |
+|hidden_size|768|768|
+|n_layers|4|4|
+|n_splits| - |8|
+|n_epochs|30|30|
+
+Below is a table for hyper-parameters for each algorithm.
+
+|parameter|MLE|MRT|DSL|
+|-|-|-|-|
+|n_epochs|30|30 + 40|30 + 10|
+|optimizer|Adam|SGD|Adam|
+|lr|1e-3|1e-2|1e-2|
+|max_grad_norm|1e+8|5|1e+8 $\rightarrow$ 5|
+
+Please, note that MRT has different optimization setup.
 
 ## Usage
 
@@ -44,29 +154,43 @@ I recommend to use corpora from [AI-Hub](http://www.aihub.or.kr/), if you are tr
 
 ```bash
 >> python train.py -h
-usage: train.py [-h] --model_fn MODEL_FN --train TRAIN --valid VALID --lang LANG [--gpu_id GPU_ID]
-                [--off_autocast] [--batch_size BATCH_SIZE] [--n_epochs N_EPOCHS] [--verbose VERBOSE]
-                [--init_epoch INIT_EPOCH] [--max_length MAX_LENGTH] [--dropout DROPOUT]
-                [--word_vec_size WORD_VEC_SIZE] [--hidden_size HIDDEN_SIZE] [--n_layers N_LAYERS]
-                [--max_grad_norm MAX_GRAD_NORM] [--iteration_per_update ITERATION_PER_UPDATE] [--lr LR]
-                [--lr_step LR_STEP] [--lr_gamma LR_GAMMA] [--lr_decay_start LR_DECAY_START] [--use_radam]
-                [--use_adam] [--rl_lr RL_LR] [--rl_n_samples RL_N_SAMPLES] [--rl_n_epochs RL_N_EPOCHS]
-                [--rl_n_gram RL_N_GRAM] [--rl_reward RL_REWARD] [--use_transformer] [--n_splits N_SPLITS]
+usage: train.py [-h] --model_fn MODEL_FN --train TRAIN --valid VALID --lang
+                LANG [--gpu_id GPU_ID] [--off_autocast]
+                [--batch_size BATCH_SIZE] [--n_epochs N_EPOCHS]
+                [--verbose VERBOSE] [--init_epoch INIT_EPOCH]
+                [--max_length MAX_LENGTH] [--dropout DROPOUT]
+                [--word_vec_size WORD_VEC_SIZE] [--hidden_size HIDDEN_SIZE]
+                [--n_layers N_LAYERS] [--max_grad_norm MAX_GRAD_NORM]
+                [--iteration_per_update ITERATION_PER_UPDATE] [--lr LR]
+                [--lr_step LR_STEP] [--lr_gamma LR_GAMMA]
+                [--lr_decay_start LR_DECAY_START] [--use_adam] [--use_radam]
+                [--rl_lr RL_LR] [--rl_n_samples RL_N_SAMPLES]
+                [--rl_n_epochs RL_N_EPOCHS] [--rl_n_gram RL_N_GRAM]
+                [--rl_reward RL_REWARD] [--use_transformer]
+                [--n_splits N_SPLITS]
 
 optional arguments:
   -h, --help            show this help message and exit
-  --model_fn MODEL_FN   Model file name to save. Additional information would be annotated to the file name.
-  --train TRAIN         Training set file name except the extention. (ex: train.en --> train)
-  --valid VALID         Validation set file name except the extention. (ex: valid.en --> valid)
-  --lang LANG           Set of extention represents language pair. (ex: en + ko --> enko)
-  --gpu_id GPU_ID       GPU ID to train. Currently, GPU parallel is not supported. -1 for CPU. Default=-1
-  --off_autocast        Turn-off Automatic Mixed Precision (AMP), which speed-up training.
+  --model_fn MODEL_FN   Model file name to save. Additional information would
+                        be annotated to the file name.
+  --train TRAIN         Training set file name except the extention. (ex:
+                        train.en --> train)
+  --valid VALID         Validation set file name except the extention. (ex:
+                        valid.en --> valid)
+  --lang LANG           Set of extention represents language pair. (ex: en +
+                        ko --> enko)
+  --gpu_id GPU_ID       GPU ID to train. Currently, GPU parallel is not
+                        supported. -1 for CPU. Default=-1
+  --off_autocast        Turn-off Automatic Mixed Precision (AMP), which speed-
+                        up training.
   --batch_size BATCH_SIZE
                         Mini batch size for gradient descent. Default=32
   --n_epochs N_EPOCHS   Number of epochs to train. Default=20
-  --verbose VERBOSE     VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE = 0, 1, 2. Default=2
+  --verbose VERBOSE     VERBOSE_SILENT, VERBOSE_EPOCH_WISE, VERBOSE_BATCH_WISE
+                        = 0, 1, 2. Default=2
   --init_epoch INIT_EPOCH
-                        Set initial epoch number, which can be useful in continue training. Default=1
+                        Set initial epoch number, which can be useful in
+                        continue training. Default=1
   --max_length MAX_LENGTH
                         Maximum length of the training sequence. Default=100
   --dropout DROPOUT     Dropout rate. Default=0.2
@@ -78,25 +202,33 @@ optional arguments:
   --max_grad_norm MAX_GRAD_NORM
                         Threshold for gradient clipping. Default=5.0
   --iteration_per_update ITERATION_PER_UPDATE
-                        Number of feed-forward iterations for one parameter update. Default=1
+                        Number of feed-forward iterations for one parameter
+                        update. Default=1
   --lr LR               Initial learning rate. Default=1.0
-  --lr_step LR_STEP     Number of epochs for each learning rate decay. Default=1
+  --lr_step LR_STEP     Number of epochs for each learning rate decay.
+                        Default=1
   --lr_gamma LR_GAMMA   Learning rate decay rate. Default=0.5
   --lr_decay_start LR_DECAY_START
                         Learning rate decay start at. Default=10
-  --use_radam           Use rectified Adam as optimizer. Other lr arguments should be changed.
-  --use_adam            Use Adam as optimizer instead of SGD. Other lr arguments should be changed.
+  --use_adam            Use Adam as optimizer instead of SGD. Other lr
+                        arguments should be changed.
+  --use_radam           Use rectified Adam as optimizer. Other lr arguments
+                        should be changed.
   --rl_lr RL_LR         Learning rate for reinforcement learning. Default=0.01
   --rl_n_samples RL_N_SAMPLES
                         Number of samples to get baseline. Default=1
   --rl_n_epochs RL_N_EPOCHS
-                        Number of epochs for reinforcement learning. Default=10
+                        Number of epochs for reinforcement learning.
+                        Default=10
   --rl_n_gram RL_N_GRAM
-                        Maximum number of tokens to calculate BLEU for reinforcement learning. Default=6
+                        Maximum number of tokens to calculate BLEU for
+                        reinforcement learning. Default=6
   --rl_reward RL_REWARD
-                        Method name to use as reward function for RL training. Default=gleu
+                        Method name to use as reward function for RL training.
+                        Default=gleu
   --use_transformer     Set model architecture as Transformer.
-  --n_splits N_SPLITS   Number of heads in multi-head attention in Transformer. Default=8
+  --n_splits N_SPLITS   Number of heads in multi-head attention in
+                        Transformer. Default=8
 ```
 
 example usage:
@@ -141,14 +273,18 @@ LM Training:
 DSL using pretrained LM:
 ```bash
 >> python dual_train.py --train ./data/corpus.shuf.train.tok.bpe --valid ./data/corpus.shuf.valid.tok.bpe --lang enko \
---gpu_id 0 --batch_size 64 --n_epochs 30 --max_length 64 --dropout .2 \
+--gpu_id 0 --batch_size 64 --n_epochs 40 --max_length 64 --dropout .2 \
 --word_vec_size 512 --hidden_size 768 --n_layers 4 --max_grad_norm 1e+8 --iteration_per_update 4 \
---dsl_n_warmup_epochs 5 --dsl_lambda 1e-2 \
+--dsl_n_warmup_epochs 30 --dsl_lambda 1e-2 \
 --lm_fn ./lm.pth \
 --model_fn ./model.pth
 ```
 
+Note that I recommend to use different 'max_grad_norm value' (e.g. 5) for after warm-up training. You can use 'continue_dual_train.py' to change 'max_grad_norm' argument.
+
 ### Inference
+
+You can translate any sentence via standard input and output.
 
 ```bash
 >> python translate.py -h
@@ -182,78 +318,7 @@ example usage:
 
 You may also need to change the argument parameters.
 
-## Evaluation
-
-### Setup
-
-In order to evaluate this project, I used public dataset from [AI-HUB](https://aihub.or.kr/), which provides 1,600,000 pairs of sentence.
-I randomly split this data into train/valid/test set by following number of lines each.
-In fact, original test set, which has about 200000 lines, is too big to take bunch of evaluations, I reduced it to 1,000 lines.
-(In other words, you can get better model, if you put removed 200,000 lines into training set.)
-
-|set|lang|#lines|#tokens|#characters|
-|-|-|-|-|-|
-|train|en|1,200,000|43,700,390|367,477,362|
-||ko|1,200,000|39,066,127|344,881,403|
-|valid|en|200,000|7,286,230|61,262,147|
-||ko|200,000|6,516,442|57,518,240|
-|valid-1000|en|1,000|36,307|305,369|
-||ko|1,000|32,282|285,911|
-|test-1000|en|1,000|35,686|298,993|
-||ko|1,000|31,720|280,126|
-
-Each dataset is tokenized with Mecab/MosesTokenizer and BPE.
-After preprocessing, each language has vocabulary size like as below:
-
-|en|ko|
-|-|-|
-|20,525|29,411|
-
-Also, we have following hyper-parameters for each model to proceed a evaluation.
-
-|parameter|seq2seq|transformer|
-|-|-|-|
-|batch_size|320|4096|
-|word_vec_size|512| - |
-|hidden_size|768|768|
-|n_layers|4|4|
-|n_splits| - |8|
-|n_epochs|30|30|
-
-Below is a table for hyper-parameters for each algorithm.
-
-|parameter|MLE|MRT|DSL|
-|-|-|-|-|
-|n_epochs|30|30+40|5+25|
-|optimizer|Adam|SGD|Adam|
-|lr|1e-3|1e-2|1e-3|
-|max_grad_norm|1e+8|5|1e+8|
-
-Please, note that MRT has different optimization setup.
-
-### Results
-
-Following table shows a evaluation result for each algorithm.
-
-||enko|koen|
-|:-:|:-:|:-:|
-|Sequence-to-Sequence|32.53|29.67|
-|Sequence-to-Sequence (MRT)|34.04|30.89|
-|Sequence-to-Sequence (DSL)|-|-|
-|Transformer|34.96|31.84|
-|Transformer (MRT)|-|-|
-|Transformer (DSL)|-|-|
-
-As you can see, Transformer outperforms in ENKO/KOEN task.
-I couldn't run MRT on Transformer, due to lack of memory.
-
-|beam_size|enko|koen|
-|:-:|:-:|:-:|
-|1|31.65|28.93|
-|5|32.53|29.67|
-|10|32.48|29.37|
-
-### Samples
+## Translation Examples
 
 Below table shows that result from both MLE and MRT in Korean-English translation task.
 
