@@ -34,7 +34,6 @@ class MaximumLikelihoodEstimationEngine(Engine):
         self.scaler = GradScaler()
 
     @staticmethod
-    #@profile
     def train(engine, mini_batch):
         # You have to reset the gradients of all model parameters
         # before to take another step in gradient descent.

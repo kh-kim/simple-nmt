@@ -1,3 +1,4 @@
+import random
 from argparse import Namespace
 
 import torch
@@ -61,56 +62,51 @@ def get_vocab(texts, min_freq=1):
         ],
         special_first=True
     )
-    vocab.set_default_index(1)
+    vocab.set_default_index(SPECIAL_TOKENS.UNK_idx)
 
     return vocab
 
 
 class MachineTranslationDataset(Dataset):
 
-    def __init__(self, texts, special_token_at_both=False):
+    def __init__(self, texts, src_vocab, tgt_vocab, special_token_at_both=False):
         self.texts = texts
+        self.src_vocab = src_vocab
+        self.tgt_vocab = tgt_vocab
         self.special_token_at_both = special_token_at_both
+
+        for i in range(len(texts)):
+            if self.special_token_at_both:
+                src_text = [SPECIAL_TOKENS.BOS] + texts[i][0] + [SPECIAL_TOKENS.EOS]
+            else:
+                src_text = texts[i][0]
+            tgt_text = [SPECIAL_TOKENS.BOS] + texts[i][1] + [SPECIAL_TOKENS.EOS]
+
+            texts[i] = (
+                torch.tensor(src_vocab(src_text), dtype=torch.long),
+                torch.tensor(tgt_vocab(tgt_text), dtype=torch.long),
+            )
     
     def __len__(self):
         return len(self.texts)
-    
+
     def __getitem__(self, item):
-        text = [
-            self.texts[item][0],
-            self.texts[item][1],
-        ]
-
-        if self.special_token_at_both:
-            text[0] = [SPECIAL_TOKENS.BOS] + text[0] + [SPECIAL_TOKENS.EOS]
-        text[1] = [SPECIAL_TOKENS.BOS] + text[1] + [SPECIAL_TOKENS.EOS]
-
         return {
-            'src': text[0],
-            'tgt': text[1],
+            'src': self.texts[item][0],
+            'tgt': self.texts[item][1],
         }
 
 
 class MachineTranslationCollator():
 
-    def __init__(self, src_vocab, tgt_vocab):
-        self.src_vocab = src_vocab
-        self.tgt_vocab = tgt_vocab
-
     def __call__(self, samples):
         src = sorted(
-            [(torch.tensor(
-                self.src_vocab(s['src']),
-                dtype=torch.long
-             ), len(s['src'])) for s in samples],
+            [(s['src'], s['src'].size(-1)) for s in samples],
             key=lambda x: x[1],
             reverse=True,
         )
         tgt = sorted(
-            [(torch.tensor(
-                self.tgt_vocab(s['tgt']),
-                dtype=torch.long
-             ), len(s['tgt'])) for s in samples],
+            [(s['tgt'], s['tgt'].size(-1)) for s in samples],
             key=lambda x: x[1],
             reverse=True,
         )
@@ -120,7 +116,7 @@ class MachineTranslationCollator():
                 pad_sequence(
                     [s[0] for s in src],
                     batch_first=True,
-                    padding_value=0,
+                    padding_value=SPECIAL_TOKENS.PAD_idx,
                 ),
                 torch.tensor(
                     [s[1] for s in src],
@@ -131,7 +127,7 @@ class MachineTranslationCollator():
                 pad_sequence(
                     [t[0] for t in tgt],
                     batch_first=True,
-                    padding_value=0,
+                    padding_value=SPECIAL_TOKENS.PAD_idx,
                 ),
                 torch.tensor(
                     [t[1] for t in tgt],
@@ -140,13 +136,28 @@ class MachineTranslationCollator():
             ),
         }
 
-        # print('src')
-        # print(return_value['src'][0].shape)
-        # print(return_value['src'][0])
-        # print(return_value['src'][1])
-        # print('tgt')
-        # print(return_value['tgt'][0].shape)
-        # print(return_value['tgt'][0])
-        # print(return_value['tgt'][1])
-
         return Namespace(**return_value)
+
+
+class SequenceLengthBasedBatchSampler():
+
+    def __init__(self, texts, batch_size):
+        self.batch_size = batch_size
+        self.lens = [len(s[1]) for s in texts]
+        self.indice = [i for i in range(len(texts))]
+
+        tmp = sorted(zip(self.lens, self.indice), key=lambda x: x[0])
+        self.sorted_lens = [x[0] for x in tmp]
+        self.sorted_indice = [x[1] for x in tmp]
+
+    def __iter__(self):
+        batch_indice = [i for i in range(0, len(self.lens), self.batch_size)]
+        random.shuffle(batch_indice)
+
+        for i, batch_idx in enumerate(batch_indice):
+            ret = self.sorted_indice[batch_idx:batch_idx + self.batch_size]
+
+            yield ret
+        
+    def __len__(self):
+        return len(self.lens) // self.batch_size

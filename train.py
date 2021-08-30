@@ -14,6 +14,7 @@ from simple_nmt.dataset import (
     get_vocab,
     MachineTranslationDataset,
     MachineTranslationCollator,
+    SequenceLengthBasedBatchSampler,
 )
 
 from simple_nmt.models.seq2seq import Seq2Seq
@@ -220,7 +221,7 @@ def define_argparser(is_continue=False):
 
     return config
 
-
+# @profile
 def get_loaders(
     config,
     is_dsl=False
@@ -249,27 +250,23 @@ def get_loaders(
     # Get dataloaders with given Dataset and Collator.
     train_loader = DataLoader(
         MachineTranslationDataset(
-            train_texts,
+            train_texts, src_vocab, tgt_vocab,
             special_token_at_both=is_dsl,
         ),
-        batch_size=config.batch_size,
-        shuffle=True,
-        collate_fn=MachineTranslationCollator(
-            src_vocab,
-            tgt_vocab,
+        batch_sampler=SequenceLengthBasedBatchSampler(
+            train_texts,
+            config.batch_size
         ),
+        collate_fn=MachineTranslationCollator(),
     )
     valid_loader = DataLoader(
         MachineTranslationDataset(
-            train_texts,
+            valid_texts, src_vocab, tgt_vocab,
             special_token_at_both=is_dsl,
         ),
         batch_size=config.batch_size,
         shuffle=False,
-        collate_fn=MachineTranslationCollator(
-            src_vocab,
-            tgt_vocab,
-        ),
+        collate_fn=MachineTranslationCollator(),
     )
 
     return train_loader, valid_loader, src_vocab, tgt_vocab
