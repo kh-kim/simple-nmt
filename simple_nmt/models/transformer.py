@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-import simple_nmt.data_loader as data_loader
+from simple_nmt.dataset import SPECIAL_TOKENS
 from simple_nmt.search import SingleBeamSearchBoard
 
 
@@ -262,8 +262,16 @@ class Transformer(nn.Module):
 
         super().__init__()
 
-        self.emb_enc = nn.Embedding(input_size, hidden_size)
-        self.emb_dec = nn.Embedding(output_size, hidden_size)
+        self.emb_enc = nn.Embedding(
+            input_size,
+            hidden_size,
+            padding_idx=SPECIAL_TOKENS.PAD_idx
+        )
+        self.emb_dec = nn.Embedding(
+            output_size,
+            hidden_size,
+            padding_idx=SPECIAL_TOKENS.PAD_idx
+        )
         self.emb_dropout = nn.Dropout(dropout_p)
 
         self.pos_enc = self._generate_pos_enc(hidden_size, max_length)
@@ -392,7 +400,7 @@ class Transformer(nn.Module):
         # |z| = (batch_size, n, hidden_size)
 
         # Fill a vector, which has 'batch_size' dimension, with BOS value.
-        y_t_1 = x.new(batch_size, 1).zero_() + data_loader.BOS
+        y_t_1 = x.new(batch_size, 1).zero_() + SPECIAL_TOKENS.BOS_idx
         # |y_t_1| = (batch_size, 1)
         is_decoding = x.new_ones(batch_size, 1).bool()
 
@@ -436,11 +444,11 @@ class Transformer(nn.Module):
             # Put PAD if the sample is done.
             y_t_1 = y_t_1.masked_fill_(
                 ~is_decoding,
-                data_loader.PAD,
+                SPECIAL_TOKENS.PAD_idx,
             )
 
             # Update is_decoding flag.
-            is_decoding = is_decoding * torch.ne(y_t_1, data_loader.EOS)
+            is_decoding = is_decoding * torch.ne(y_t_1, SPECIAL_TOKENS.EOS_idx)
             # |y_t_1| = (batch_size, 1)
             # |is_decoding| = (batch_size, 1)
             indice += [y_t_1]

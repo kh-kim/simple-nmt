@@ -5,12 +5,18 @@ import torch
 from torch import optim
 import torch.nn as nn
 
-from simple_nmt.data_loader import DataLoader
-import simple_nmt.data_loader as data_loader
+from simple_nmt.dataset import SPECIAL_TOKENS
+from simple_nmt.dataset import (
+    read_text,
+    get_vocab,
+    MachineTranslationDataset,
+    MachineTranslationCollator,
+)
 
 from simple_nmt.models.rnnlm import LanguageModel
 from simple_nmt.lm_trainer import LanguageModelTrainer as LMTrainer
 
+from train import get_loaders
 from dual_train import get_crits
 
 
@@ -144,18 +150,13 @@ def main(config):
         pp.pprint(vars(config))
     print_config(config)
 
-    loader = DataLoader(
-        config.train,
-        config.valid,
-        (config.lang[:2], config.lang[-2:]),
-        batch_size=config.batch_size,
-        device=-1,
-        max_length=config.max_length,
-        dsl=True,
+    train_loader, valid_loader, src_vocab, tgt_vocab = get_loaders(
+        config,
+        is_dsl=False,
     )
 
-    src_vocab_size = len(loader.src.vocab)
-    tgt_vocab_size = len(loader.tgt.vocab)
+    src_vocab_size = len(src_vocab)
+    tgt_vocab_size = len(tgt_vocab)
 
     models = get_models(
         src_vocab_size,
@@ -166,7 +167,7 @@ def main(config):
     crits = get_crits(
         src_vocab_size,
         tgt_vocab_size,
-        pad_index=data_loader.PAD
+        pad_index=SPECIAL_TOKENS.PAD_idx
     )
 
     if config.gpu_id >= 0:
@@ -183,10 +184,10 @@ def main(config):
 
         model = lm_trainer.train(
             model, crit, optimizer,
-            train_loader=loader.train_iter,
-            valid_loader=loader.valid_iter,
-            src_vocab=loader.src.vocab if model.vocab_size == src_vocab_size else None,
-            tgt_vocab=loader.tgt.vocab if model.vocab_size == tgt_vocab_size else None,
+            train_loader=train_loader,
+            valid_loader=valid_loader,
+            src_vocab=src_vocab if model.vocab_size == src_vocab_size else None,
+            tgt_vocab=tgt_vocab if model.vocab_size == tgt_vocab_size else None,
             n_epochs=config.n_epochs,
         )
 
@@ -197,8 +198,8 @@ def main(config):
                 models[1].state_dict(),
             ],
             'config': config,
-            'src_vocab': loader.src.vocab,
-            'tgt_vocab': loader.tgt.vocab,
+            'src_vocab': src_vocab,
+            'tgt_vocab': tgt_vocab,
         }, config.model_fn
     )
 

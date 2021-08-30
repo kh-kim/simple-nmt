@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-import simple_nmt.data_loader as data_loader
+from simple_nmt.dataset import SPECIAL_TOKENS
 
 
 class LanguageModel(nn.Module):
@@ -27,7 +27,7 @@ class LanguageModel(nn.Module):
         self.emb = nn.Embedding(
             vocab_size,
             word_vec_size,
-            padding_idx=data_loader.PAD,
+            padding_idx=SPECIAL_TOKENS.PAD_idx,
         )
         self.rnn = nn.LSTM(
             word_vec_size,
@@ -52,7 +52,7 @@ class LanguageModel(nn.Module):
         return y_hat
 
     def search(self, batch_size=64, max_length=255):
-        x = torch.LongTensor(batch_size, 1).to(next(self.parameters()).device).zero_() + data_loader.BOS
+        x = torch.LongTensor(batch_size, 1).to(next(self.parameters()).device).zero_() + SPECIAL_TOKENS.BOS_idx
         # |x| = (batch_size, 1)
         is_undone = x.new_ones(batch_size, 1).float()
 
@@ -70,8 +70,8 @@ class LanguageModel(nn.Module):
 
             # y = torch.topk(y_hat, 1, dim = -1)[1].squeeze(-1)
             y = torch.multinomial(y_hat.exp().view(batch_size, -1), 1)
-            y = y.masked_fill_((1. - is_undone).byte(), data_loader.PAD)
-            is_undone = is_undone * torch.ne(y, data_loader.EOS).float()            
+            y = y.masked_fill_((1. - is_undone).byte(), SPECIAL_TOKENS.PAD_idx)
+            is_undone = is_undone * torch.ne(y, SPECIAL_TOKENS.EOS_idx).float()            
             # |y| = (batch_size, 1)
             # |is_undone| = (batch_size, 1)
             indice += [y]

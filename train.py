@@ -2,13 +2,19 @@ import argparse
 import pprint
 
 import torch
-from torch import optim
 import torch.nn as nn
+from torch import optim
+from torch.utils.data import DataLoader
 
 import torch_optimizer as custom_optim
 
-from simple_nmt.data_loader import DataLoader
-import simple_nmt.data_loader as data_loader
+from simple_nmt.dataset import SPECIAL_TOKENS
+from simple_nmt.dataset import (
+    read_text,
+    get_vocab,
+    MachineTranslationDataset,
+    MachineTranslationCollator,
+)
 
 from simple_nmt.models.seq2seq import Seq2Seq
 from simple_nmt.models.transformer import Transformer
@@ -215,6 +221,60 @@ def define_argparser(is_continue=False):
     return config
 
 
+def get_loaders(
+    config,
+    is_dsl=False
+):
+    # Get parallel corpus.
+    # Both text files are aligned with each line.
+    train_texts = read_text(
+        config.train,                           # Train filename without extension.
+        (config.lang[:2], config.lang[-2:]),    # Extensions for both languages.
+        max_length=config.max_length,
+    )
+    valid_texts = read_text(
+        config.valid,                           # Valid filename without extension.
+        (config.lang[:2], config.lang[-2:]),    # Extensions for both languages.
+        max_length=config.max_length,
+    )
+
+    # Get vocabularies from train corpus.
+    src_vocab = get_vocab(
+        [src for src, _ in train_texts],
+    )
+    tgt_vocab = get_vocab(
+        [tgt for _, tgt in train_texts],
+    )
+
+    # Get dataloaders with given Dataset and Collator.
+    train_loader = DataLoader(
+        MachineTranslationDataset(
+            train_texts,
+            special_token_at_both=is_dsl,
+        ),
+        batch_size=config.batch_size,
+        shuffle=True,
+        collate_fn=MachineTranslationCollator(
+            src_vocab,
+            tgt_vocab,
+        ),
+    )
+    valid_loader = DataLoader(
+        MachineTranslationDataset(
+            train_texts,
+            special_token_at_both=is_dsl,
+        ),
+        batch_size=config.batch_size,
+        shuffle=False,
+        collate_fn=MachineTranslationCollator(
+            src_vocab,
+            tgt_vocab,
+        ),
+    )
+
+    return train_loader, valid_loader, src_vocab, tgt_vocab
+
+
 def get_model(input_size, output_size, config):
     if config.use_transformer:
         model = Transformer(
@@ -292,19 +352,14 @@ def main(config, model_weight=None, opt_weight=None):
         pp.pprint(vars(config))
     print_config(config)
 
-    loader = DataLoader(
-        config.train,                           # Train file name except extention, which is language.
-        config.valid,                           # Validation file name except extension.
-        (config.lang[:2], config.lang[-2:]),    # Source and target language.
-        batch_size=config.batch_size,
-        device=-1,                              # Lazy loading
-        max_length=config.max_length,           # Loger sequence will be excluded.
-        dsl=False,                              # Turn-off Dual-supervised Learning mode.
+    train_loader, valid_loader, src_vocab, tgt_vocab = get_loaders(
+        config,
+        is_dsl=False,
     )
 
-    input_size, output_size = len(loader.src.vocab), len(loader.tgt.vocab)
+    input_size, output_size = len(src_vocab), len(tgt_vocab)
     model = get_model(input_size, output_size, config)
-    crit = get_crit(output_size, data_loader.PAD)
+    crit = get_crit(output_size, SPECIAL_TOKENS.PAD_idx)
 
     if model_weight is not None:
         model.load_state_dict(model_weight)
@@ -332,10 +387,10 @@ def main(config, model_weight=None, opt_weight=None):
         model,
         crit,
         optimizer,
-        train_loader=loader.train_iter,
-        valid_loader=loader.valid_iter,
-        src_vocab=loader.src.vocab,
-        tgt_vocab=loader.tgt.vocab,
+        train_loader=train_loader,
+        valid_loader=valid_loader,
+        src_vocab=src_vocab,
+        tgt_vocab=tgt_vocab,
         n_epochs=config.n_epochs,
         lr_scheduler=lr_scheduler,
     )
@@ -348,10 +403,10 @@ def main(config, model_weight=None, opt_weight=None):
             model,
             None, # We don't need criterion for MRT.
             optimizer,
-            train_loader=loader.train_iter,
-            valid_loader=loader.valid_iter,
-            src_vocab=loader.src.vocab,
-            tgt_vocab=loader.tgt.vocab,
+            train_loader=train_loader,
+            valid_loader=valid_loader,
+            src_vocab=src_vocab,
+            tgt_vocab=tgt_vocab,
             n_epochs=config.rl_n_epochs,
         )
 

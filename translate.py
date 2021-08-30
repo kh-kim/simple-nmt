@@ -4,9 +4,16 @@ import codecs
 from operator import itemgetter
 
 import torch
+from torch.nn.utils.rnn import pad_sequence
 
-from simple_nmt.data_loader import DataLoader
-import simple_nmt.data_loader as data_loader
+from simple_nmt.dataset import SPECIAL_TOKENS
+from simple_nmt.dataset import (
+    read_text,
+    get_vocab,
+    MachineTranslationDataset,
+    MachineTranslationCollator,
+)
+
 from simple_nmt.models.seq2seq import Seq2Seq
 from simple_nmt.models.transformer import Transformer
 
@@ -95,11 +102,11 @@ def to_text(indice, vocab):
         for j in range(len(indice[i])):
             index = indice[i][j]
 
-            if index == data_loader.EOS:
+            if index == SPECIAL_TOKENS.EOS_idx:
                 # line += ['<EOS>']
                 break
             else:
-                line += [vocab.itos[index]]
+                line += vocab.lookup_token(index)
 
         line = ' '.join(line)
         lines += [line]
@@ -187,17 +194,13 @@ if __name__ == '__main__':
 
     src_vocab, tgt_vocab, is_reverse = get_vocabs(train_config, config, saved_data)
 
-    # Initialize dataloader, but we don't need to read training & test corpus.
-    # What we need is just load vocabularies from the previously trained model.
-    loader = DataLoader()
-    loader.load_vocab(src_vocab, tgt_vocab)
-
-    input_size, output_size = len(loader.src.vocab), len(loader.tgt.vocab)
+    input_size, output_size = len(src_vocab), len(tgt_vocab)
     model = get_model(input_size, output_size, train_config, is_reverse)
 
     # Put models to device if it is necessary.
     if config.gpu_id >= 0:
         model.cuda(config.gpu_id)
+    device = next(model.parameters()).device
 
     with torch.no_grad():
         # Get sentences from standard input.
@@ -217,10 +220,17 @@ if __name__ == '__main__':
             lengths         = [sorted_tuples[i][1] for i in range(len(sorted_tuples))]
             original_indice = [sorted_tuples[i][2] for i in range(len(sorted_tuples))]
 
-            # Converts string to list of index.
-            x = loader.src.numericalize(
-                loader.src.pad(sorted_lines),
-                device='cuda:%d' % config.gpu_id if config.gpu_id >= 0 else 'cpu'
+            # Converts string to padded tensor with list of length.
+            x = (
+                pad_sequence(             # get pads
+                    [torch.tensor(        # List[int] --> LongTensor
+                        src_vocab(line),  # List[str] --> List[int]
+                        dtype=torch.long,
+                    ) for line in sorted_lines],
+                    batch_first=True,
+                    padding_value=SPECIAL_TOKENS.PAD_idx,
+                ).to(device),   # Send tensor to certain device.
+                lengths         # List[int] as length of each sentences.
             )
             # |x| = (batch_size, length)
 
@@ -229,7 +239,7 @@ if __name__ == '__main__':
                 # |y_hats| = (batch_size, length, output_size)
                 # |indice| = (batch_size, length)
 
-                output = to_text(indice, loader.tgt.vocab)
+                output = to_text(indice, tgt_vocab)
                 sorted_tuples = sorted(zip(output, original_indice), key=itemgetter(1))
                 output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
 
@@ -247,7 +257,7 @@ if __name__ == '__main__':
                 # Restore the original_indice.
                 output = []
                 for i in range(len(batch_indice)):
-                    output += [to_text(batch_indice[i], loader.tgt.vocab)]
+                    output += [to_text(batch_indice[i], tgt_vocab)]
                 sorted_tuples = sorted(zip(output, original_indice), key=itemgetter(1))
                 output = [sorted_tuples[i][0] for i in range(len(sorted_tuples))]
 

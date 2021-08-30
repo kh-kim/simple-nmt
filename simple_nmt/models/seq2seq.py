@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 
-import simple_nmt.data_loader as data_loader
+from simple_nmt.dataset import SPECIAL_TOKENS
 from simple_nmt.search import SingleBeamSearchBoard
 
 
@@ -162,8 +162,16 @@ class Seq2Seq(nn.Module):
 
         super(Seq2Seq, self).__init__()
 
-        self.emb_src = nn.Embedding(input_size, word_vec_size)
-        self.emb_dec = nn.Embedding(output_size, word_vec_size)
+        self.emb_src = nn.Embedding(
+            input_size,
+            word_vec_size,
+            padding_idx=SPECIAL_TOKENS.PAD_idx,
+        )
+        self.emb_dec = nn.Embedding(
+            output_size,
+            word_vec_size,
+            padding_idx=SPECIAL_TOKENS.PAD_idx,
+        )
 
         self.encoder = Encoder(
             word_vec_size, hidden_size,
@@ -325,7 +333,7 @@ class Seq2Seq(nn.Module):
         decoder_hidden = self.fast_merge_encoder_hiddens(h_0_tgt)
 
         # Fill a vector, which has 'batch_size' dimension, with BOS value.
-        y = x.new(batch_size, 1).zero_() + data_loader.BOS
+        y = x.new(batch_size, 1).zero_() + SPECIAL_TOKENS.BOS_idx
 
         is_decoding = x.new_ones(batch_size, 1).bool()
         h_t_tilde, y_hats, indice = None, [], []
@@ -358,9 +366,9 @@ class Seq2Seq(nn.Module):
                 # |y| = (batch_size, 1)
 
             # Put PAD if the sample is done.
-            y = y.masked_fill_(~is_decoding, data_loader.PAD)
+            y = y.masked_fill_(~is_decoding, SPECIAL_TOKENS.PAD_idx)
             # Update is_decoding if there is EOS token.
-            is_decoding = is_decoding * torch.ne(y, data_loader.EOS)
+            is_decoding = is_decoding * torch.ne(y, SPECIAL_TOKENS.EOS_idx)
             # |is_decoding| = (batch_size, 1)
             indice += [y]
 

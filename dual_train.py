@@ -5,8 +5,13 @@ import torch
 from torch import optim
 import torch.nn as nn
 
-from simple_nmt.data_loader import DataLoader
-import simple_nmt.data_loader as data_loader
+from simple_nmt.dataset import SPECIAL_TOKENS
+from simple_nmt.dataset import (
+    read_text,
+    get_vocab,
+    MachineTranslationDataset,
+    MachineTranslationCollator,
+)
 
 from simple_nmt.models.seq2seq import Seq2Seq
 from simple_nmt.models.transformer import Transformer
@@ -14,6 +19,8 @@ from simple_nmt.models.rnnlm import LanguageModel
 
 from simple_nmt.lm_trainer import LanguageModelTrainer as LMTrainer
 from simple_nmt.dual_trainer import DualSupervisedTrainer as DSLTrainer
+
+from train import get_loaders
 
 
 def define_argparser(is_continue=False):
@@ -269,18 +276,13 @@ def main(config, model_weight=None, opt_weight=None):
         pp.pprint(vars(config))
     print_config(config)
 
-    loader = DataLoader(
-        config.train,
-        config.valid,
-        (config.lang[:2], config.lang[-2:]),
-        batch_size=config.batch_size,
-        device=-1,
-        max_length=config.max_length,
-        dsl=True,
+    train_loader, valid_loader, src_vocab, tgt_vocab = get_loaders(
+        config,
+        is_dsl=True,
     )
 
-    src_vocab_size = len(loader.src.vocab)
-    tgt_vocab_size = len(loader.tgt.vocab)
+    src_vocab_size = len(src_vocab)
+    tgt_vocab_size = len(tgt_vocab)
 
     language_models, models = get_models(
         src_vocab_size,
@@ -291,7 +293,7 @@ def main(config, model_weight=None, opt_weight=None):
     crits = get_crits(
         src_vocab_size,
         tgt_vocab_size,
-        pad_index=data_loader.PAD
+        pad_index=SPECIAL_TOKENS.PAD_idx
     )
 
     if model_weight is not None:
@@ -325,9 +327,9 @@ def main(config, model_weight=None, opt_weight=None):
         language_models,
         crits,
         optimizers,
-        train_loader=loader.train_iter,
-        valid_loader=loader.valid_iter,
-        vocabs=[loader.src.vocab, loader.tgt.vocab],
+        train_loader=train_loader,
+        valid_loader=valid_loader,
+        vocabs=[src_vocab, tgt_vocab],
         n_epochs=config.n_epochs,
         lr_schedulers=None,
     )

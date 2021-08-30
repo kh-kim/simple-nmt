@@ -3,7 +3,7 @@ from operator import itemgetter
 import torch
 import torch.nn as nn
 
-import simple_nmt.data_loader as data_loader
+from simple_nmt.dataset import SPECIAL_TOKENS
 
 LENGTH_PENALTY = .2
 MIN_LENGTH = 5
@@ -24,7 +24,7 @@ class SingleBeamSearchBoard():
         # To put data to same device.
         self.device = device
         # Inferred word index for each time-step. For now, initialized with initial time-step.
-        self.word_indice = [torch.LongTensor(beam_size).zero_().to(self.device) + data_loader.BOS]
+        self.word_indice = [torch.LongTensor(beam_size).zero_().to(self.device) + SPECIAL_TOKENS.BOS_idx]
         # Beam index for selected word index, at each time-step.
         self.beam_indice = [torch.LongTensor(beam_size).zero_().to(self.device) - 1]
         # Cumulative log-probability for each beam.
@@ -130,7 +130,7 @@ class SingleBeamSearchBoard():
 
         # Add results to history boards.
         self.cumulative_probs += [top_log_prob]
-        self.masks += [torch.eq(self.word_indice[-1], data_loader.EOS)] # Set finish mask if we got EOS.
+        self.masks += [torch.eq(self.word_indice[-1], SPECIAL_TOKENS.EOS_idx)] # Set finish mask if we got EOS.
         # Calculate a number of finished beams.
         self.done_cnt += self.masks[-1].float().sum()
 

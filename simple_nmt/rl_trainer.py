@@ -14,7 +14,7 @@ from ignite.engine import Events
 from ignite.metrics import RunningAverage
 from ignite.contrib.handlers.tqdm_logger import ProgressBar
 
-import simple_nmt.data_loader as data_loader
+from simple_nmt.dataset import SPECIAL_TOKENS
 from simple_nmt.trainer import MaximumLikelihoodEstimationEngine
 from simple_nmt.utils import get_grad_norm, get_parameter_norm
 
@@ -57,12 +57,12 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
                 ref, hyp = [], []
                 for t in range(y.size(-1)):
                     ref += [str(int(y[b, t]))]
-                    if y[b, t] == data_loader.EOS:
+                    if y[b, t] == SPECIAL_TOKENS.EOS_idx:
                         break
 
                 for t in range(y_hat.size(-1)):
                     hyp += [str(int(y_hat[b, t]))]
-                    if y_hat[b, t] == data_loader.EOS:
+                    if y_hat[b, t] == SPECIAL_TOKENS.EOS_idx:
                         break
                 # Below lines are slower than naive for loops in above.
                 # ref = y[b].masked_select(y[b] != data_loader.PAD).tolist()
@@ -100,7 +100,7 @@ class MinimumRiskTrainingEngine(MaximumLikelihoodEstimationEngine):
         log_prob = -F.nll_loss(
             y_hat.view(-1, output_size),
             indice.view(-1),
-            ignore_index=data_loader.PAD,
+            ignore_index=SPECIAL_TOKENS.PAD_idx,
             reduction='none'
         ).view(batch_size, -1).sum(dim=-1)
 
